@@ -1,10 +1,28 @@
 import { useState, useEffect, useContext } from "react";
 import React from "react";
 import { Ctx } from "./App.jsx";
-import { requestResetCode, verifyResetCode, resetPassword } from "./api.js";
 import { db } from "./db.js";
+import { C, uid, today, dateRange, fmt, fmtKES } from "./utils.js";
+import {
+  SEED_USERS, SEED_ANIMAL_REQS, SEED_INGREDIENT_PROFILES,
+  CATEGORY_META, CATEGORY_ICONS, FEEDING_QTY, TIPS, SPECIES_RECS,
+  getAnimalReqs, buildSpeciesList, getStagesForCategory, getReqForStage
+} from "./constants.js";
+import { solveLeastCost, solveLeastCostLP, calcNutrients, calcCost } from "./solver.js";
 
 const h = React.createElement;
+
+// Server push — fire and forget, never blocks the UI
+async function serverPush(col, data) {
+  const key = import.meta.env?.VITE_SYNC_KEY || 'wamifugo2024';
+  try {
+    await fetch('/api/data/' + col, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Sync-Key': key },
+      body: JSON.stringify({ data, ts: Date.now() }),
+    });
+  } catch (e) { console.warn('Push failed:', e.message); }
+}
 
 // ── UI ATOMS ─────────────────────────────────────────────────────────────────
 function Btn({children,onClick,variant='primary',size='md',disabled=false,style={}}){
