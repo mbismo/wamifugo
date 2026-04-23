@@ -368,8 +368,7 @@ function LoginPage({onLogin}){
     view==='newpass'&&h('div',null,
       h('div',{style:{marginBottom:10}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},('New Password'),h('input',{type:'password',value:newPass,onChange:e=>setNewPass(e.target.value),placeholder:'Min 6 characters',style:{width:'100%',padding:'9px 12px',border:'1px solid '+C.border,borderRadius:8,fontSize:14,background:C.cream}})),
       h('div',{style:{marginBottom:12}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},('Confirm Password'),h('input',{type:'password',value:newPass2,onChange:e=>setNewPass2(e.target.value),placeholder:'Repeat new password',style:{width:'100%',padding:'9px 12px',border:'1px solid '+(newPass2&&newPass2!==newPass?C.danger:C.border),borderRadius:8,fontSize:14,background:C.cream}})),
-      h(Btn,{onClick:resetPassword,size:'lg',style:{width:'100%'},disabled:loading||!newPass||!newPass2||newPass!==newPass2},
-        saveBtnLabel)));
+      h(Btn,{onClick:resetPassword,size:'lg',style:{width:'100%'},disabled:loading||!newPass||!newPass2||newPass!==newPass2},saveBtnLabel)));
   return h('div',{style:{minHeight:'100vh',background:C.earth,display:'flex',alignItems:'center',justifyContent:'center',padding:16}},card);
 }
 
