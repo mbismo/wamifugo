@@ -403,7 +403,7 @@ function DashboardPage(){
   const rev=monthSales.reduce((s,x)=>s+x.total,0);
   const cost=monthSales.reduce((s,x)=>s+x.cost,0);
   const profit=rev-cost;
-  const lowStock=inventory.filter(i=>i.!(i.qty>i.reorderLevel));
+  const lowStock=inventory.filter(i=>i.qty <= i.reorderLevel);
   const last7=Array.from({length:7},(_,i)=>{
     const d=new Date();d.setDate(d.getDate()-(6-i));
     const ds=d.toISOString().slice(0,10);
@@ -498,8 +498,8 @@ function InventoryPage(){
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:18}},
       h(StatCard,{label:'Total Items',value:inventory.length,color:C.earth,icon:'📦'}),
       h(StatCard,{label:'Stock Value',value:fmtKES(inventory.reduce((s,i)=>s+i.qty*(i.lastPrice||0),0)),color:C.grass,icon:'💰'}),
-      h(StatCard,{label:'Low Stock',value:inventory.filter(i=>i.!(i.qty>i.reorderLevel)).length,sub:'items',color:C.danger,icon:'⚠️'}),
-      h(StatCard,{label:'Out of Stock',value:inventory.filter(i=>!(i.qty>0)).length,sub:'items',color:C.danger,icon:'🚫'})),
+      h(StatCard,{label:'Low Stock',value:inventory.filter(i=>i.qty <= i.reorderLevel).length,sub:'items',color:C.danger,icon:'⚠️'}),
+      h(StatCard,{label:'Out of Stock',value:inventory.filter(i=>i.qty === 0 || i.qty < 0).length,sub:'items',color:C.danger,icon:'🚫'})),
     h(Card,null,h(CardTitle,null,'Current Inventory'),
       h(Tbl,{cols:[
         {key:'name',label:'Ingredient',render:r=>h('div',{style:{display:'flex',alignItems:'center',gap:8}},h('span',{style:{background:catColor(r.category)+'22',color:catColor(r.category),borderRadius:4,padding:'2px 6px',fontSize:11,fontWeight:700}},catIcon(r.category)),r.name)},
@@ -832,7 +832,7 @@ function FormulatorPage(){
     if(!pendingSale||!selPrice)return;
     const insuff=pendingSale.items.filter(item=>{
       const st=inventory.find(s=>s.id===item.id);
-      return !st||st.qty<item.qty;
+      return !st||!(st.qty>=item.qty);
     });
     if(insuff.length>0){showT('Insufficient stock: '+insuff.map(i=>i.name).join(', '),'error');return;}
     setInventory(inventory.map(inv=>{
