@@ -129,6 +129,7 @@ const NAV=[
   {key:'reports',icon:'📈',label:'Reports'},
   {key:'feeding_guide',icon:'🌾',label:'Feeding Guide'},
   {key:'education',icon:'📺',label:'Education Screen'},
+  {key:'resources',icon:'📁',label:'Resources'},
   {key:'ingredients',icon:'🧂',label:'Ingredients',admin:true},
   {key:'nutrition',icon:'🔬',label:'Nutritional Reqs',admin:true},
   {key:'users',icon:'🔐',label:'Users',admin:true},
@@ -718,23 +719,30 @@ function ReportsPage(){
 
 function FeedingGuidePage(){
   const [species,setSpecies]=useState('');
+  const speciesOptions=Object.keys(FEEDING_QTY);
   const stages=species&&FEEDING_QTY[species]?Object.entries(FEEDING_QTY[species]):[];
   return h('div',{style:{padding:'0 26px 26px'}},
     h(PageHdr,{title:'Feeding Quantity Guide',subtitle:'Recommended daily feed amounts per species and production stage'}),
-    h(Card,{style:{marginBottom:15}},h('div',{style:{padding:15}},h(Sel,{label:'Select Species',value:species,onChange:setSpecies,options:[{value:'',label:'Choose a species…'},...SPECIES_LIST.map(s=>({value:s.value,label:s.icon+' '+s.label}))]}))),
-    species&&stages.length>0&&h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))',gap:13}},
+    h(Card,{style:{marginBottom:15}},h('div',{style:{padding:15}},
+      h(Sel,{label:'Select Species',value:species,onChange:setSpecies,
+        options:[{value:'',label:'Choose a species…'},...speciesOptions.map(s=>({value:s,label:(CATEGORY_ICONS[s]||'🐾')+' '+s}))]}))),
+    species&&stages.length>0&&h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:13}},
       stages.map(([sName,info])=>h(Card,{key:sName},
-        h('div',{style:{background:`linear-gradient(135deg,${C.earth},${C.clay})`,padding:'11px 15px'}},h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:14,fontWeight:700,color:'white'}},sName)),
+        h('div',{style:{background:`linear-gradient(135deg,${C.earth},${C.clay})`,padding:'11px 15px'}},
+          h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:14,fontWeight:700,color:'white'}},sName)),
         h('div',{style:{padding:13}},
           [{icon:'🥣',label:'Daily Ration',val:info.qty},{icon:'💧',label:'Water',val:info.water},{icon:'🕐',label:'Meals/Day',val:info.meals}]
           .map((x,i)=>h('div',{key:i,style:{display:'flex',gap:9,marginBottom:9,alignItems:'flex-start'}},
             h('span',{style:{fontSize:17}},x.icon),
-            h('div',null,h('div',{style:{fontSize:10,fontFamily:"'DM Mono',monospace",textTransform:'uppercase',letterSpacing:1,color:C.muted}},x.label),h('div',{style:{fontSize:13,fontWeight:600,color:C.earth}},x.val)))),
-          info.notes&&h('div',{style:{background:C.parchment,borderRadius:6,padding:'7px 9px',fontSize:11,color:C.soil,borderLeft:`3px solid ${C.savanna}`,lineHeight:1.5}},info.notes))))),
-    !species&&h('div',{style:{textAlign:'center',padding:'60px 20px',color:C.muted}},h('div',{style:{fontSize:52,marginBottom:12}},'🌾'),h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:19,color:C.clay,marginBottom:7}},'Select a Species'),h('div',{style:{fontSize:13}},'Choose a species above to see feeding quantities for each stage.')));
+            h('div',null,
+              h('div',{style:{fontSize:10,fontFamily:"'DM Mono',monospace",textTransform:'uppercase',letterSpacing:1,color:C.muted}},x.label),
+              h('div',{style:{fontSize:13,fontWeight:600,color:C.earth}},x.val)))),
+          info.notes&&h('div',{style:{background:C.parchment,borderRadius:6,padding:'7px 9px',fontSize:11,color:C.soil,borderLeft:`3px solid ${C.savanna}`,lineHeight:1.5,marginTop:8}},info.notes))))),
+    !species&&h('div',{style:{textAlign:'center',padding:'60px 20px',color:C.muted}},
+      h('div',{style:{fontSize:52,marginBottom:12}},'🌾'),
+      h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:19,color:C.clay,marginBottom:7}},'Select a Species'),
+      h('div',{style:{fontSize:14}},'Choose a species above to see daily feeding recommendations')));
 }
-
-// ── EDUCATION ─────────────────────────────────────────────────────────────────
 
 function EducationPage(){
   const [filter,setFilter]=useState('all');
@@ -989,8 +997,165 @@ function UsersPage({currentUser}){
 // ── ROOT ──────────────────────────────────────────────────────────────────────
 
 
+
+// ── RESOURCES PAGE ────────────────────────────────────────────────────────────
+function ResourcesPage(){
+  const {ingredients,inventory,sales,purchases,customers,animalReqs}=useContext(Ctx)||{};
+  const [toast,setToast]=useState(null);
+  const showT=(msg,type='success')=>{setToast({msg,type});setTimeout(()=>setToast(null),3500);};
+
+  // ── CSV HELPERS ──────────────────────────────────────────────────────────────
+  function dlCSV(rows,filename){
+    const csv=rows.map(r=>r.map(c=>{
+      const s=String(c??'').replace(/"/g,'\"');
+      return s.includes(',')||s.includes('\n')?`"${s}"`:s;
+    }).join(',')).join('\n');
+    const a=document.createElement('a');
+    a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+    a.download=filename;a.click();
+  }
+
+  function exportIngredients(){
+    const rows=[['ID','Name','Category','Price (KES/kg)','CP%','ME kcal/kg','Fat%','Fibre%','Ca%','P%','Lys%','Met%','Min Incl%','Max Incl%']];
+    (ingredients||[]).forEach(i=>rows.push([i.id,i.name,i.category,i.price,i.cp||'',i.me||'',i.fat||'',i.fibre||'',i.ca||'',i.p||'',i.lys||'',i.met||'',i.minIncl||0,i.maxIncl||100]));
+    dlCSV(rows,'ingredients.csv');showT('Ingredients exported');
+  }
+
+  function exportInventory(){
+    const rows=[['ID','Name','Category','Stock (kg)','Buy Price','Sell Price','Margin%','Reorder Level']];
+    (inventory||[]).forEach(i=>rows.push([i.id,i.name,i.category,i.qty,i.lastPrice,i.sellPrice||'',i.margin||'',i.reorderLevel||'']));
+    dlCSV(rows,'inventory.csv');showT('Inventory exported');
+  }
+
+  function exportSales(){
+    const rows=[['ID','Date','Customer','Product','Batch kg','Sell Price/kg','Revenue','Cost','Profit','Discount']];
+    (sales||[]).forEach(s=>rows.push([s.id,s.date,s.customerName,s.product,s.batchKg,s.sellPricePerKg,s.totalRevenue,s.totalCost,s.profit,s.discount||0]));
+    dlCSV(rows,'sales.csv');showT('Sales exported');
+  }
+
+  function exportPurchases(){
+    const rows=[['ID','Date','Ingredient','Qty (kg)','Cost/kg','Total','Supplier']];
+    (purchases||[]).forEach(p=>rows.push([p.id,p.date,p.itemName,p.qty,p.costPerKg,p.total,p.supplier||'']));
+    dlCSV(rows,'purchases.csv');showT('Purchases exported');
+  }
+
+  function exportCustomers(){
+    const rows=[['ID','Name','Phone','Email','Location','Created']];
+    (customers||[]).forEach(c=>rows.push([c.id,c.name,c.phone||'',c.email||'',c.location||'',c.createdAt||'']));
+    dlCSV(rows,'customers.csv');showT('Customers exported');
+  }
+
+  function exportAnimalReqs(){
+    const rows=[['ID','Category','Stage','CP Min','CP Max','ME Min','ME Max','Fat Min','Fat Max','Fibre Min','Fibre Max','Ca Min','Ca Max','P Min','P Max','Lys Min','Lys Max','Met Min','Met Max']];
+    ((animalReqs||SEED_ANIMAL_REQS)||[]).forEach(a=>rows.push([a.id,a.category,a.stage,...a.cp,...a.me,...a.fat,...a.fibre,...a.ca,...a.p,...a.lys,...a.met]));
+    dlCSV(rows,'animal_requirements.csv');showT('Animal requirements exported');
+  }
+
+  // ── IMPORT HELPERS ───────────────────────────────────────────────────────────
+  function parseCSV(text){
+    const lines=text.trim().split('\n');
+    const headers=lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim());
+    return lines.slice(1).filter(l=>l.trim()).map(line=>{
+      const vals=line.split(',').map(v=>v.replace(/^"|"$/g,'').trim());
+      const obj={};headers.forEach((h,i)=>obj[h]=vals[i]||'');
+      return obj;
+    });
+  }
+
+  function importIngredients(e){
+    const file=e.target.files[0];if(!file)return;
+    const r=new FileReader();
+    r.onload=ev=>{
+      try{
+        const rows=parseCSV(ev.target.result);
+        if(!rows.length){showT('No data found','error');return;}
+        showT(`Importing ${rows.length} ingredients — go to Ingredients page to apply`,'info');
+        // Store in localStorage for manual review
+        db.set('pendingIngredientImport',rows);
+        showT(`${rows.length} ingredients ready to import. Go to Admin → Ingredients to review.`);
+      }catch(err){showT('Error reading CSV: '+err.message,'error');}
+    };
+    r.readAsText(file);e.target.value='';
+  }
+
+  // ── PRINT PDF ────────────────────────────────────────────────────────────────
+  function printReport(title,rows,headers){
+    const w=window.open('','_blank');
+    const table=headers.map((h,i)=>`<th style="background:#3d2b1f;color:white;padding:8px 10px;text-align:left;font-size:11px">${h}</th>`).join('');
+    const body=rows.map((row,ri)=>
+      `<tr style="background:${ri%2?'#faf6ee':'white'}">${row.map(c=>`<td style="padding:6px 10px;font-size:11px;border-bottom:1px solid #e8e0d4">${c??''}</td>`).join('')}</tr>`
+    ).join('');
+    w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+    <style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#3d2b1f;font-family:Georgia}table{border-collapse:collapse;width:100%}@media print{button{display:none}}</style>
+    </head><body>
+    <h1>🌾 ${title}</h1>
+    <p style="color:#7a6a55;font-size:12px">Generated: ${new Date().toLocaleString('en-KE')} | Wa-Mifugo Feeds Management System</p>
+    <table><thead><tr>${table}</tr></thead><tbody>${body}</tbody></table>
+    <br><button onclick="window.print()" style="background:#3d2b1f;color:white;padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨 Print / Save as PDF</button>
+    </body></html>`);
+    w.document.close();
+  }
+
+  const ExportCard=({icon,title,desc,onExport,onPrint})=>
+    h(Card,{style:{marginBottom:0}},
+      h('div',{style:{padding:'14px 16px'}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:8}},
+          h('span',{style:{fontSize:24}},icon),
+          h('div',null,
+            h('div',{style:{fontWeight:700,color:C.earth,fontSize:14}},title),
+            h('div',{style:{fontSize:12,color:C.muted}},desc))),
+        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+          h(Btn,{onClick:onExport,size:'sm',variant:'secondary'},'⬇ Export CSV'),
+          onPrint&&h(Btn,{onClick:onPrint,size:'sm',variant:'secondary'},'🖨 Print PDF'))));
+
+  return h('div',{style:{padding:'0 26px 26px'}},
+    toast&&h(Toast,{msg:toast.msg,type:toast.type}),
+    h(PageHdr,{title:'Resources',subtitle:'Export data to Excel/CSV, print PDF reports, or import data'}),
+
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:14,marginBottom:20}},
+      h(ExportCard,{icon:'🧂',title:'Ingredients',desc:'Nutrient profiles, prices, inclusion limits',
+        onExport:exportIngredients,
+        onPrint:()=>printReport('Ingredient Register',
+          (ingredients||[]).map(i=>[i.name,i.category,`KES ${i.price}`,i.cp,i.me,i.ca,i.p]),
+          ['Ingredient','Category','Price/kg','CP%','ME','Ca%','P%'])}),
+      h(ExportCard,{icon:'📦',title:'Inventory',desc:'Current stock levels and valuations',
+        onExport:exportInventory,
+        onPrint:()=>printReport('Inventory Report',
+          (inventory||[]).map(i=>[i.name,i.qty+' kg',`KES ${i.lastPrice}`,`KES ${i.sellPrice||''}`,`KES ${((i.qty||0)*(i.lastPrice||0)).toLocaleString()}`]),
+          ['Ingredient','Stock','Buy Price','Sell Price','Stock Value'])}),
+      h(ExportCard,{icon:'💰',title:'Sales',desc:'All sales records with profit analysis',
+        onExport:exportSales,
+        onPrint:()=>printReport('Sales Report',
+          (sales||[]).map(s=>[s.date,s.customerName,s.product,s.batchKg+'kg',`KES ${(s.totalRevenue||0).toLocaleString()}`,`KES ${(s.profit||0).toLocaleString()}`]),
+          ['Date','Customer','Product','Batch','Revenue','Profit'])}),
+      h(ExportCard,{icon:'🛒',title:'Purchases',desc:'All stock purchase records',
+        onExport:exportPurchases,
+        onPrint:()=>printReport('Purchase Records',
+          (purchases||[]).map(p=>[p.date,p.itemName,p.qty+'kg',`KES ${p.costPerKg}`,`KES ${(p.total||0).toLocaleString()}`,p.supplier||'']),
+          ['Date','Ingredient','Qty','Cost/kg','Total','Supplier'])}),
+      h(ExportCard,{icon:'👥',title:'Customers',desc:'Customer directory',
+        onExport:exportCustomers,
+        onPrint:()=>printReport('Customer Directory',
+          (customers||[]).map(c=>[c.name,c.phone||'',c.email||'',c.location||'']),
+          ['Name','Phone','Email','Location'])}),
+      h(ExportCard,{icon:'🔬',title:'Animal Requirements',desc:'Nutritional targets by species and stage',
+        onExport:exportAnimalReqs,
+        onPrint:()=>printReport('Animal Nutritional Requirements',
+          ((animalReqs||SEED_ANIMAL_REQS)||[]).map(a=>[a.category,a.stage,a.cp.join('-'),a.me.join('-'),a.ca.join('-'),a.p.join('-')]),
+          ['Category','Stage','CP%','ME kcal/kg','Ca%','P%'])})),
+
+    h(Card,null,
+      h('div',{style:{padding:'14px 16px'}},
+        h('div',{style:{fontWeight:700,color:C.earth,fontSize:14,marginBottom:4}},'📤 Import Ingredients from CSV'),
+        h('div',{style:{fontSize:12,color:C.muted,marginBottom:12}},'Upload a CSV exported from this system or from the Excel reference file. Headers must match exactly.'),
+        h('label',{style:{display:'inline-block',padding:'8px 16px',background:C.earth,color:'white',borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:600}},
+          '📂 Choose CSV File',
+          h('input',{type:'file',accept:'.csv',onChange:importIngredients,style:{display:'none'}})))));
+}
+
 export default function Pages({ page, setPage, user, onLogin, onLogout, sidebarOpen, setSidebarOpen }) {
   const ctx = useContext(Ctx);
+  const animalReqs = ctx?.animalReqs;
 
   if (!user) return h(LoginPage, { onLogin });
 
@@ -1003,6 +1168,7 @@ export default function Pages({ page, setPage, user, onLogin, onLogout, sidebarO
     reports:       h(ReportsPage, null),
     feeding_guide: h(FeedingGuidePage, null),
     education:     h(EducationPage, null),
+    resources:     h(ResourcesPage, null),
     ingredients:   user.role === "admin" ? h(IngredientsPage, null) : h(DashboardPage, null),
     nutrition:     user.role === "admin" ? h(NutritionPage, null)   : h(DashboardPage, null),
     users:         user.role === "admin" ? h(UsersPage, { currentUser: user }) : h(DashboardPage, null),
