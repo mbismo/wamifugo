@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: wamifugo
+    runtime: node
+    region: frankfurt       # Closest to Kenya
+    plan: starter           # $7/month — always on, no spin-down
+
+    buildCommand: cd server && npm install && cd ../client && npm install && npm run build
+    startCommand: cd server && node index.js
+
+    # Persistent disk — SQLite database survives deploys and restarts
+    disk:
+      name: wamifugo-data
+      mountPath: /data
+      sizeGB: 1             # 1GB = $0.25/month, more than enough for JSON data
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /data          # Where SQLite file is stored on the persistent disk
+      - key: PORT
+        value: 3001
+      - key: SYNC_KEY
+        generateValue: true   # Render auto-generates a secure random value
+      - key: EMAIL_USER
+        sync: false           # your.gmail@gmail.com
+      - key: EMAIL_PASS
+        sync: false           # 16-char Gmail App Password
+      - key: SITE_URL
+        sync: false           # https://wamifugo.onrender.com
