@@ -339,7 +339,7 @@ function LoginPage({onLogin}){
   };
   const requestCode=async()=>{if(!email.trim()){setE('Enter your email.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.trim()})});const d=await r.json();setLoading(false);if(d.ok){setM(d.msg||'Code sent — check inbox and spam.');setView('verify');}else setE(d.error||'Something went wrong.');}catch{setLoading(false);setE('Could not reach server.');}};
   const verifyCode=async()=>{if(code.length!==6){setE('Enter the 6-digit code.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify_code',email:email.trim(),code:code.trim()})});const d=await r.json();setLoading(false);if(d.ok){setView('newpass');setM('');}else setE(d.error||'Invalid code.');}catch{setLoading(false);setE('Could not reach server.');}};
-  const resetPassword=async()=>{if(newPass.length <= 5){setE('Min 6 characters.');return;}if(newPass!==newPass2){setE('Passwords do not match.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:email.trim(),code:code.trim(),password:newPass})});const d=await r.json();setLoading(false);if(d.ok){const us=db.get('users',SEED_USERS);db.set('users',us.map(u=>u.email&&u.email.toLowerCase()===email.trim().toLowerCase()?{...u,password:newPass}:u));setM('Password updated! You can now sign in.');setView('login');setCode('');setNewPass('');setNewPass2('');}else setE(d.error||'Could not update password.');}catch{setLoading(false);setE('Could not reach server.');}};
+  const resetPassword=async()=>{if(!(newPass.length >= 6)){setE('Min 6 characters.');return;}if(newPass!==newPass2){setE('Passwords do not match.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:email.trim(),code:code.trim(),password:newPass})});const d=await r.json();setLoading(false);if(d.ok){const us=db.get('users',SEED_USERS);db.set('users',us.map(u=>u.email&&u.email.toLowerCase()===email.trim().toLowerCase()?{...u,password:newPass}:u));setM('Password updated! You can now sign in.');setView('login');setCode('');setNewPass('');setNewPass2('');}else setE(d.error||'Could not update password.');}catch{setLoading(false);setE('Could not reach server.');}};
   const card=h('div',{style:{background:'white',borderRadius:20,padding:'40px 36px',width:'100%',maxWidth:400,boxShadow:'0 32px 80px rgba(0,0,0,0.4)'}},
     h('div',{style:{textAlign:'center',marginBottom:28}},
       h('div',{style:{fontSize:46,marginBottom:8}},'🌾'),
@@ -367,7 +367,7 @@ function LoginPage({onLogin}){
     view==='newpass'&&h('div',null,
       h('div',{style:{marginBottom:10}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},'New Password'),h('input',{type:'password',value:newPass,onChange:e=>setNewPass(e.target.value),placeholder:'Min 6 characters',style:{width:'100%',padding:'9px 12px',border:'1px solid '+C.border,borderRadius:8,fontSize:14,background:C.cream}})),
       h('div',{style:{marginBottom:12}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},'Confirm Password'),h('input',{type:'password',value:newPass2,onChange:e=>setNewPass2(e.target.value),placeholder:'Repeat new password',style:{width:'100%',padding:'9px 12px',border:'1px solid '+(newPass2&&newPass2!==newPass?C.danger:C.border),borderRadius:8,fontSize:14,background:C.cream}})),
-      h(Btn,{onClick:resetPassword,size:'lg',style:{width:'100%'},disabled:loading||newPass.length <= 5||newPass!==newPass2},loading?'Saving...':'Set New Password')));
+      h(Btn,{onClick:resetPassword,size:'lg',style:{width:'100%'},disabled:loading||!(newPass.length >= 6)||newPass!==newPass2},loading?'Saving...':'Set New Password')));
   return h('div',{style:{minHeight:'100vh',background:C.earth,display:'flex',alignItems:'center',justifyContent:'center',padding:16}},card);
 }
 
@@ -403,7 +403,7 @@ function DashboardPage(){
   const rev=monthSales.reduce((s,x)=>s+x.total,0);
   const cost=monthSales.reduce((s,x)=>s+x.cost,0);
   const profit=rev-cost;
-  const lowStock=inventory.filter(i=>i.qty<=i.reorderLevel);
+  const lowStock=inventory.filter(i=>i.!(i.qty>i.reorderLevel));
   const last7=Array.from({length:7},(_,i)=>{
     const d=new Date();d.setDate(d.getDate()-(6-i));
     const ds=d.toISOString().slice(0,10);
@@ -498,8 +498,8 @@ function InventoryPage(){
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:18}},
       h(StatCard,{label:'Total Items',value:inventory.length,color:C.earth,icon:'📦'}),
       h(StatCard,{label:'Stock Value',value:fmtKES(inventory.reduce((s,i)=>s+i.qty*(i.lastPrice||0),0)),color:C.grass,icon:'💰'}),
-      h(StatCard,{label:'Low Stock',value:inventory.filter(i=>i.qty<=i.reorderLevel).length,sub:'items',color:C.danger,icon:'⚠️'}),
-      h(StatCard,{label:'Out of Stock',value:inventory.filter(i=>i.qty<=0).length,sub:'items',color:C.danger,icon:'🚫'})),
+      h(StatCard,{label:'Low Stock',value:inventory.filter(i=>i.!(i.qty>i.reorderLevel)).length,sub:'items',color:C.danger,icon:'⚠️'}),
+      h(StatCard,{label:'Out of Stock',value:inventory.filter(i=>!(i.qty>0)).length,sub:'items',color:C.danger,icon:'🚫'})),
     h(Card,null,h(CardTitle,null,'Current Inventory'),
       h(Tbl,{cols:[
         {key:'name',label:'Ingredient',render:r=>h('div',{style:{display:'flex',alignItems:'center',gap:8}},h('span',{style:{background:catColor(r.category)+'22',color:catColor(r.category),borderRadius:4,padding:'2px 6px',fontSize:11,fontWeight:700}},catIcon(r.category)),r.name)},
@@ -510,7 +510,7 @@ function InventoryPage(){
         {key:'margin',label:'Margin',render:r=>h('span',{style:{fontSize:11,color:C.muted}},r.sellPriceDirect?'Fixed':((r.margin||20)+'%'))},
         {key:'value',label:'Stock Value',render:r=>fmtKES(r.qty*(r.lastPrice||0))},
         {key:'reorderLevel',label:'Reorder At',render:r=>`${fmt(r.reorderLevel)} kg`},
-        {key:'status',label:'Status',render:r=>h(Badge,{color:r.qty<=0?C.danger:r.qty<=r.reorderLevel?C.warning:C.grass},r.qty<=0?'Out of Stock':r.qty<=r.reorderLevel?'Low Stock':'OK')},
+        {key:'status',label:'Status',render:r=>h(Badge,{color:!(r.qty>0)?C.danger:r.qty<=r.reorderLevel?C.warning:C.grass},!(r.qty>0)?'Out of Stock':r.qty<=r.reorderLevel?'Low Stock':'OK')},
         {key:'price_action',label:'',render:r=>h('div',{style:{display:'flex',gap:4}},
           h(Btn,{size:'sm',variant:'secondary',onClick:()=>openPriceEdit(r)},'💲 Price'),
           user?.role==='admin'&&h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteInventoryItem(r)},'🗑'))},
@@ -866,7 +866,7 @@ function FormulatorPage(){
     const lim=getANFLimit(id,species);
     if(!lim)return'neutral';
     if(lim.maxPct===0)return'excluded';
-    if(lim.maxPct<=5)return'caution';
+    if(lim.maxPct <= 5)return'caution';
     return'neutral';
   };
   const anfStatusStyle=s=>({
@@ -1081,7 +1081,7 @@ function FormulatorPage(){
           'KES '+(parseFloat(selPrice)*batchKg-pendingSale.totalCost).toFixed(2)))),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
         h(Btn,{onClick:()=>setShowSell(false),variant:'secondary'},'Cancel'),
-        h(Btn,{onClick:doConfirmSale,variant:'success',disabled:!selPrice||parseFloat(selPrice)<=0},
+        h(Btn,{onClick:doConfirmSale,variant:'success',disabled:!selPrice||!(parseFloat(selPrice)>0)},
           '✅ Customer Agreed — Record Sale')));
 }
 
@@ -1210,7 +1210,7 @@ function ReportsPage(){
         {key:'qty',label:'Qty',render:r=>fmt(r.qty)+' kg'},
         {key:'lastPrice',label:'Price/kg',render:r=>fmtKES(r.lastPrice||0)},
         {key:'value',label:'Stock Value',render:r=>h('span',{style:{fontWeight:700,fontFamily:"'DM Mono',monospace"}},fmtKES(r.qty*(r.lastPrice||0)))},
-        {key:'status',label:'Status',render:r=>h(Badge,{color:r.qty<=0?C.danger:r.qty<=r.reorderLevel?C.warning:C.grass},r.qty<=0?'Out':r.qty<=r.reorderLevel?'Low':'OK')},
+        {key:'status',label:'Status',render:r=>h(Badge,{color:!(r.qty>0)?C.danger:r.qty<=r.reorderLevel?C.warning:C.grass},!(r.qty>0)?'Out':r.qty<=r.reorderLevel?'Low':'OK')},
       ],rows:inventory}),
       h('div',{style:{padding:'11px 15px',borderTop:'1px solid '+C.border,display:'flex',justifyContent:'flex-end'}},
         h('span',{style:{fontSize:14,fontWeight:700,color:C.earth,fontFamily:"'Playfair Display',serif"}},
@@ -1527,7 +1527,7 @@ function UsersPage({currentUser}){
   const openPwd=(u)=>{setPwdUser(u);setNewPwd('');setConfirmPwd('');setCurrentPwd('');};
 
   const savePwd=()=>{
-    if(newPwd.length <= 5){showT('Password must be at least 6 characters','error');return;}
+    if(!(newPwd.length >= 6)){showT('Password must be at least 6 characters','error');return;}
     if(newPwd!==confirmPwd){showT('Passwords do not match','error');return;}
     // If changing own password and not admin, verify current password
     const isOwnAccount=pwdUser.id===currentUser?.id;
@@ -1549,7 +1549,7 @@ function UsersPage({currentUser}){
 
   const deleteUser=(u)=>{
     if(u.id===currentUser?.id){showT("You can't delete your own account",'error');return;}
-    if(users.filter(x=>x.role==='admin'&&x.active).length<=1&&u.role==='admin'){
+    if(users.filter(x=>x.role==='admin'&&x.active).length < 2&&u.role==='admin'){
       showT('Cannot delete the last admin account','error');return;
     }
     if(!window.confirm('Delete user '+u.name+'? This cannot be undone.'))return;
