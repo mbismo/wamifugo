@@ -1,89 +1,118 @@
 'use strict';
-const Database = require('better-sqlite3');
 const path = require('path');
-const fs = require('fs');
+const fs   = require('fs');
 
-// ── DATABASE PATH ─────────────────────────────────────────────────────────────
-// On Render: persistent disk is mounted at /data (set DATA_DIR=/data env var)
-// Locally:   uses ./data/ folder next to server/
+// ── DATA DIRECTORY ────────────────────────────────────────────────────────────
+// On Render: persistent disk mounted at /data (set DATA_DIR=/data)
+// Locally:   ./data/ folder next to project root
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const DB_PATH = path.join(DATA_DIR, 'wamifugo.db');
-const db = new Database(DB_PATH);
+// ── PURE JSON FILE STORAGE ────────────────────────────────────────────────────
+// No native modules, no compilation — just JSON files on disk.
+// One file per collection + one for reset codes.
+// This is robust, portable, and works on any Node version.
 
-// WAL mode = better concurrent performance
-db.pragma('journal_mode = WAL');
+const COLLECTIONS = [
+  'inventory','purchases','sales','customers',
+  'stockLedger','ingredients','users','animalReqs','savedFormulas'
+];
 
-// ── INITIALISE TABLES ─────────────────────────────────────────────────────────
+function colPath(name) {
+  return path.join(DATA_DIR, `${name}.json`);
+}
+
+function codesPath() {
+  return path.join(DATA_DIR, 'reset_codes.json');
+}
+
+// ── INITIALISE ────────────────────────────────────────────────────────────────
 function initDB() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS collections (
-      name        TEXT PRIMARY KEY,
-      data        TEXT NOT NULL DEFAULT '[]',
-      updated_at  INTEGER NOT NULL DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS reset_codes (
-      email       TEXT NOT NULL,
-      code        TEXT NOT NULL,
-      user_id     TEXT NOT NULL,
-      created_at  INTEGER NOT NULL
-    );
-  `);
-
-  const insert = db.prepare(
-    "INSERT OR IGNORE INTO collections (name, data, updated_at) VALUES (?, '[]', 0)"
-  );
-  for (const name of [
-    'inventory','purchases','sales','customers',
-    'stockLedger','ingredients','users','animalReqs','savedFormulas'
-  ]) insert.run(name);
-
-  console.log('✅ SQLite ready at', DB_PATH);
+  // Create empty collection files if they don't exist
+  for (const name of COLLECTIONS) {
+    const file = colPath(name);
+    if (!fs.existsSync(file)) {
+      fs.writeFileSync(file, JSON.stringify({ data: [], ts: 0 }));
+    }
+  }
+  if (!fs.existsSync(codesPath())) {
+    fs.writeFileSync(codesPath(), '[]');
+  }
+  console.log('✅ Storage ready at', DATA_DIR);
 }
 
 // ── COLLECTIONS ───────────────────────────────────────────────────────────────
 function getCollection(name) {
-  const row = db.prepare('SELECT data, updated_at FROM collections WHERE name = ?').get(name);
-  if (!row) return { data: null, ts: 0 };
-  return { data: JSON.parse(row.data), ts: row.updated_at };
+  try {
+    const raw = fs.readFileSync(colPath(name), 'utf8');
+    const parsed = JSON.parse(raw);
+    return { data: parsed.data ?? null, ts: parsed.ts ?? 0 };
+  } catch {
+    return { data: null, ts: 0 };
+  }
 }
 
 function setCollection(name, data, ts) {
   const timestamp = ts || Date.now();
-  db.prepare(`
-    INSERT INTO collections (name, data, updated_at) VALUES (?, ?, ?)
-    ON CONFLICT(name) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
-  `).run(name, JSON.stringify(data), timestamp);
+  fs.writeFileSync(colPath(name), JSON.stringify({ data, ts: timestamp }));
   return timestamp;
 }
 
 function getAllTimestamps() {
   const out = {};
-  db.prepare('SELECT name, updated_at FROM collections').all()
-    .forEach(r => { out[r.name] = r.updated_at; });
+  for (const name of COLLECTIONS) {
+    try {
+      const raw = fs.readFileSync(colPath(name), 'utf8');
+      out[name] = JSON.parse(raw).ts ?? 0;
+    } catch {
+      out[name] = 0;
+    }
+  }
   return out;
 }
 
 // ── RESET CODES ───────────────────────────────────────────────────────────────
+function loadCodes() {
+  try {
+    return JSON.parse(fs.readFileSync(codesPath(), 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function saveCodes(codes) {
+  fs.writeFileSync(codesPath(), JSON.stringify(codes));
+}
+
 function saveResetCode(email, code, userId) {
-  db.prepare('DELETE FROM reset_codes WHERE email = ?').run(email);
-  db.prepare('INSERT INTO reset_codes (email, code, user_id, created_at) VALUES (?, ?, ?, ?)')
-    .run(email, code, userId, Date.now());
+  // Remove any existing code for this email first
+  const codes = loadCodes().filter(c => c.email !== email);
+  codes.push({ email, code, user_id: userId, created_at: Date.now() });
+  saveCodes(codes);
 }
 
 function verifyResetCode(email, code) {
-  const row = db.prepare('SELECT * FROM reset_codes WHERE email = ? AND code = ?').get(email, code);
+  const FIFTEEN_MIN = 15 * 60 * 1000;
+  const codes = loadCodes();
+  const row = codes.find(c => c.email === email && c.code === code);
   if (!row) return null;
-  if (Date.now() - row.created_at > 15 * 60 * 1000) {
-    db.prepare('DELETE FROM reset_codes WHERE email = ?').run(email);
-    return null;
+  if (Date.now() - row.created_at > FIFTEEN_MIN) {
+    saveCodes(codes.filter(c => c.email !== email));
+    return null; // expired
   }
   return row;
 }
 
 function deleteResetCode(email) {
-  db.prepare('DELETE FROM reset_codes WHERE email = ?').run(email);
+  saveCodes(loadCodes().filter(c => c.email !== email));
 }
 
-module.exports = { initDB, getCollection, setCollection, getAllTimestamps, saveResetCode, verifyResetCode, deleteResetCode };
+module.exports = {
+  initDB,
+  getCollection,
+  setCollection,
+  getAllTimestamps,
+  saveResetCode,
+  verifyResetCode,
+  deleteResetCode,
+};
