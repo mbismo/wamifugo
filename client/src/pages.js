@@ -814,7 +814,7 @@ function FormulatorPage(){
               h('div',null,
                 h('div',{style:{fontWeight:700,fontSize:12,color:w.severity==='danger'?C.danger:C.savanna}},
                   w.ingredient+(w.maxPct===0?' — EXCLUDED for this species':' — '+w.factor+' at '+w.current+'% (limit: '+w.maxPct+'%)')),
-                h('div',{style:{fontSize:11,color:C.muted,marginTop:2,lineHeight:1.5}},w.note))))
+                h('div',{style:{fontSize:11,color:C.muted,marginTop:2,lineHeight:1.5}},w.note)))),
           h(Card,{style:{marginBottom:13}},
             h('div',{style:{background:`linear-gradient(135deg,${C.earth},${C.soil})`,padding:'15px 19px',display:'flex',justifyContent:'space-between',alignItems:'center'}},
               h('div',null,
