@@ -975,8 +975,7 @@ function FormulatorPage(){
         h(Card,{style:{marginBottom:12}},
           h('div',{style:{padding:'12px 14px'}},
             h('div',{style:{display:'flex',gap:8,alignItems:'center',marginBottom:8}},
-              h(Btn,{onClick:doFormulate,variant:'success',disabled:loading||!species||!stage},
-                loading?' Solving':' Formulate'),
+              h(Btn,{onClick:doFormulate,variant:'success',disabled:loading||!species||!stage},                loading?' Solving':' Formulate'),
               formula&&solveQuality&&h('span',{style:{fontSize:11,padding:'3px 10px',borderRadius:12,
                 background:solveQuality==='optimal'?'#f0f9f4':solveQuality==='good'?'#f0f9f4':'#fff8e6',
                 color:solveQuality==='optimal'?C.grass:solveQuality==='good'?C.grass:C.savanna,
@@ -1081,8 +1080,7 @@ function FormulatorPage(){
           'KES '+(parseFloat(selPrice)*batchKg-pendingSale.totalCost).toFixed(2)))),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
         h(Btn,{onClick:()=>setShowSell(false),variant:'secondary'},'Cancel'),
-        h(Btn,{onClick:doConfirmSale,variant:'success',disabled:!selPrice||!(parseFloat(selPrice)>0)},
-          'OK Customer Agreed - Record Sale')));
+        h(Btn,{onClick:doConfirmSale,variant:'success',disabled:!selPrice||!Number(selPrice)},'OK Customer Agreed - Record Sale')));
 }
 
 
