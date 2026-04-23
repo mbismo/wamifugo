@@ -340,6 +340,7 @@ function LoginPage({onLogin}){
   const requestCode=async()=>{if(!email.trim()){setE('Enter your email.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.trim()})});const d=await r.json();setLoading(false);if(d.ok){setM(d.msg||'Code sent  -  check inbox and spam.');setView('verify');}else setE(d.error||'Something went wrong.');}catch{setLoading(false);setE('Could not reach server.');}};
   const verifyCode=async()=>{if(code.length!==6){setE('Enter the 6-digit code.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify_code',email:email.trim(),code:code.trim()})});const d=await r.json();setLoading(false);if(d.ok){setView('newpass');setM('');}else setE(d.error||'Invalid code.');}catch{setLoading(false);setE('Could not reach server.');}};
   const resetPassword=async()=>{if(!newPass){setE('Min 6 characters.');return;}if(newPass!==newPass2){setE('Passwords do not match.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:email.trim(),code:code.trim(),password:newPass})});const d=await r.json();setLoading(false);if(d.ok){const us=db.get('users',SEED_USERS);db.set('users',us.map(u=>u.email&&u.email.toLowerCase()===email.trim().toLowerCase()?{...u,password:newPass}:u));setM('Password updated! You can now sign in.');setView('login');setCode('');setNewPass('');setNewPass2('');}else setE(d.error||'Could not update password.');}catch{setLoading(false);setE('Could not reach server.');}};
+  const saveBtnLabel=loading?'Saving...':'Set New Password';
   const card=h('div',{style:{background:'white',borderRadius:20,padding:'40px 36px',width:'100%',maxWidth:400,boxShadow:'0 32px 80px rgba(0,0,0,0.4)'}},
     h('div',{style:{textAlign:'center',marginBottom:28}},
       h('div',{style:{fontSize:46,marginBottom:8}},''),
@@ -368,7 +369,7 @@ function LoginPage({onLogin}){
       h('div',{style:{marginBottom:10}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},('New Password'),h('input',{type:'password',value:newPass,onChange:e=>setNewPass(e.target.value),placeholder:'Min 6 characters',style:{width:'100%',padding:'9px 12px',border:'1px solid '+C.border,borderRadius:8,fontSize:14,background:C.cream}})),
       h('div',{style:{marginBottom:12}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},('Confirm Password'),h('input',{type:'password',value:newPass2,onChange:e=>setNewPass2(e.target.value),placeholder:'Repeat new password',style:{width:'100%',padding:'9px 12px',border:'1px solid '+(newPass2&&newPass2!==newPass?C.danger:C.border),borderRadius:8,fontSize:14,background:C.cream}})),
       h(Btn,{onClick:resetPassword,size:'lg',style:{width:'100%'},disabled:loading||!newPass||!newPass2||newPass!==newPass2},
-        (loading?'Saving...':'Set New Password'))));
+        saveBtnLabel)));
   return h('div',{style:{minHeight:'100vh',background:C.earth,display:'flex',alignItems:'center',justifyContent:'center',padding:16}},card);
 }
 
@@ -632,8 +633,7 @@ function IngredientsPage(){
       !editing&&h('div',{style:{background:'#f0f9f4',border:`1px solid ${C.leaf}`,borderRadius:8,padding:'9px 13px',fontSize:12,color:C.soil,marginBottom:13}},('OK This ingredient will automatically be added to Inventory with 0 stock. Go to Inventory  Add Stock to record a purchase.'),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
         h(Btn,{onClick:()=>{setShowForm(false);setEditing(null);},variant:'secondary'},('Cancel'),
-        h(Btn,{onClick:saveIng,variant:'success'},
-          (editing?'Update Ingredient':'Add Ingredient')))));
+        h(Btn,{onClick:saveIng,variant:'success'},(editing?'Update Ingredient':'Add Ingredient')))));
 }
 
 //  CUSTOMERS 
@@ -672,8 +672,7 @@ function CustomersPage(){
         h('textarea',{value:form.notes,onChange:e=>setForm({...form,notes:e.target.value}),rows:3,style:{width:'100%',padding:'8px 11px',border:`1px solid ${C.border}`,borderRadius:8,fontSize:13,color:C.ink,background:C.cream,resize:'vertical'}})),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
         h(Btn,{onClick:()=>{setShowAdd(false);setSel(null);},variant:'secondary'},('Cancel'),
-        h(Btn,{onClick:save},
-          (sel?'Update':'Save Customer')))));
+        h(Btn,{onClick:save},(sel?'Update':'Save Customer')))));
 }
 
 
@@ -1042,8 +1041,7 @@ function FormulatorPage(){
                   h('td',{style:{padding:'7px 10px',textAlign:'right',fontFamily:"'DM Mono',monospace",color:C.grass,fontWeight:700}},'KES '+row.sellPricePerKg),
                   h('td',{style:{padding:'7px 10px',textAlign:'right',fontFamily:"'DM Mono',monospace"}},'KES '+(row.sellCost).toFixed(0)),
                   h('td',{style:{padding:'7px 10px',textAlign:'right'}},
-                    h(Badge,{color:ok?C.grass:C.danger},
-          (ok?' OK':'Low'))));
+                    h(Badge,{color:ok?C.grass:C.danger},(ok?' OK':'Low'))));
               })))),
           h('div',{style:{padding:'10px 14px',borderTop:'1px solid '+C.border,
             display:'flex',gap:8,justifyContent:'flex-end',flexWrap:'wrap'}},
@@ -1472,8 +1470,7 @@ function NutritionPage(){
         h(RangeInp,{nut:'met', label:'Methionine',          unit:'%'})),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
         h(Btn,{onClick:()=>{setShowReqForm(false);setEditReq(null);},variant:'secondary'},('Cancel'),
-        h(Btn,{onClick:saveReq,variant:'success'},
-          (editReq?'Update Requirements':'Add Animal Stage'))))));
+        h(Btn,{onClick:saveReq,variant:'success'},(editReq?'Update Requirements':'Add Animal Stage'))))));
 }
 
 //  USERS 
