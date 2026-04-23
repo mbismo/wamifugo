@@ -160,22 +160,7 @@ function LoginPage({onLogin}){
   return h('div',{style:{minHeight:'100vh',background:C.earth,display:'flex',alignItems:'center',justifyContent:'center',padding:16}},card);
 }
 
-// ── SIDEBAR ──────────────────────────────────────────────────────────────────
-const NAV=[
-  {key:'dashboard',icon:'📊',label:'Dashboard'},
-  {key:'formulator',icon:'🧪',label:'Feed Formulator'},
-  {key:'inventory',icon:'📦',label:'Inventory'},
-  {key:'customers',icon:'👥',label:'Customers'},
-  {key:'sales',icon:'💰',label:'Sales'},
-  {key:'reports',icon:'📈',label:'Reports'},
-  {key:'feeding_guide',icon:'🌾',label:'Feeding Guide'},
-  {key:'education',icon:'📺',label:'Education Screen'},
-  {key:'ingredients',icon:'🧂',label:'Ingredients',admin:true},
-  {key:'nutrition',icon:'🔬',label:'Nutritional Reqs',admin:true},
-  {key:'users',icon:'🔐',label:'Users',admin:true},
-];
-
-function Sidebar({page,setPage,user,onLogout,isOpen=false,onClose=()=>{}}){
+// ── SIDEBAR ──────────────────────────────────────────────────────────────────function Sidebar({page,setPage,user,onLogout,isOpen=false,onClose=()=>{}}){
   return h('div',{className:'wm-sidebar'+(isOpen?' open':''),style:{width:215,background:C.earth,minHeight:'100vh',display:'flex',flexDirection:'column',flexShrink:0,position:'relative',zIndex:1000,transition:'left 0.25s ease'}},
     h('div',{style:{padding:'18px 15px 14px',borderBottom:'1px solid rgba(255,255,255,0.1)'}},
       h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:21,fontWeight:900,color:'white',lineHeight:1}},'Wa-Mifugo'),
