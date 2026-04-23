@@ -556,7 +556,7 @@ function IngredientsPage(){
   const [filterCat,setFilterCat]=useState('all');
   const [search,setSearch]=useState('');
   const [toast,setToast]=useState(null);
-  const blank={name:'',category:'energy',price:'',cp:'',me:'',fat:'',fibre:'',ca:'',p:'',antiNote:''};
+  const blank={name:'',category:'energy',cp:'',me:'',fat:'',fibre:'',ca:'',p:'',antiNote:''};
   const [form,setForm]=useState(blank);
   const showT=(msg,type='success')=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
   const filtered=ingredients.filter(i=>(filterCat==='all'||i.category===filterCat)&&(search===''||i.name.toLowerCase().includes(search.toLowerCase())));
@@ -599,7 +599,7 @@ function IngredientsPage(){
       h(Tbl,{cols:[
         {key:'name',label:'Name',render:r=>h('span',{style:{fontWeight:600,color:C.earth}},r.name)},
         {key:'category',label:'Category',render:r=>{const m=catMeta(r.category);return h(Badge,{color:m.color},m.icon+' '+m.label);}},
-        {key:'price',label:'Price/kg',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},'KES '+r.price)},
+        {key:'price',label:'Sell Price/kg',render:r=>{const inv=inventory?.find(x=>x.id===r.id);const sp=inv?.sellPriceDirect||(inv?.lastPrice?(inv.lastPrice*(1+(inv.margin||20)/100)):0);return h('span',{style:{fontFamily:"'DM Mono',monospace",color:C.grass}},sp?'KES '+sp.toFixed(0):'—')}},
         {key:'cp',label:'CP%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace",color:r.cp>=30?C.grass:C.soil}},r.cp||'—')},
         {key:'me',label:'ME',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.me||'—')},
         {key:'ca',label:'Ca%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.ca||'—')},
@@ -614,7 +614,8 @@ function IngredientsPage(){
           h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:0.5,color:C.muted,marginBottom:4}},'Category *'),
           h('select',{value:form.category,onChange:e=>setForm({...form,category:e.target.value}),style:{width:'100%',padding:'8px 11px',border:`1px solid ${C.border}`,borderRadius:8,fontSize:13,background:C.cream,marginBottom:0}},
             CATEGORY_META.map(c=>h('option',{key:c.key,value:c.key},c.icon+' '+c.label)))),
-        h(Inp,{label:'Price (KES/kg) *',value:form.price,onChange:v=>setForm({...form,price:v}),type:'number',placeholder:'e.g. 28'})),
+        h('div',{style:{background:'#f0f9f4',border:'1px solid '+C.leaf,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.soil}},
+              '💡 Prices are managed in Inventory → 💲 Price button')),
       h('div',{style:{borderTop:`1px solid ${C.border}`,paddingTop:13,marginBottom:13}},
         h('div',{style:{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,textTransform:'uppercase',color:C.muted,marginBottom:11}},'Nutritional Composition (per 100g as-fed)'),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}},
@@ -676,19 +677,19 @@ function CustomersPage(){
 // ── FORMULATOR ────────────────────────────────────────────────────────────────
 
 function FormulatorPage(){
-  const {ingredients,setIngredients,inventory,setInventory,sales,setSales,customers}=useContext(Ctx);
-  const animalReqs=getAnimalReqs();
+  const {ingredients,setIngredients,inventory,setInventory,sales,setSales,customers,user}=useContext(Ctx);
+
+  // ── Animal requirements ──────────────────────────────────────────────────────
+  const animalReqs=getAnimalReqs(db.get('animalReqs'));
   const speciesList=buildSpeciesList(animalReqs);
   const [species,setSpecies]=useState('');
   const [stage,setStage]=useState('');
+  const stages=species?getStagesForCategory(animalReqs,species):[];
+  const reqs=species&&stage?getReqForStage(animalReqs,species,stage):null;
+
+  // ── Batch & sale state ───────────────────────────────────────────────────────
   const [batchKg,setBatchKg]=useState(100);
   const [selPrice,setSelPrice]=useState('');
-  const [selIngrs,setSelIngrs]=useState(new Set(['maize','soya_cake','omena','limestone','dcp','salt','premix']));
-  const [prices,setPrices]=useState({});
-  const [formula,setFormula]=useState(null);
-  const [nutrients,setNutrients]=useState(null);
-  const [costPKg,setCostPKg]=useState(0);
-  const [loading,setLoading]=useState(false);
   const [custId,setCustId]=useState('');
   const [showSave,setShowSave]=useState(false);
   const [fName,setFName]=useState('');
@@ -696,200 +697,394 @@ function FormulatorPage(){
   const [pendingSale,setPendingSale]=useState(null);
   const [toast,setToast]=useState(null);
   const showT=(msg,type='success')=>{setToast({msg,type});setTimeout(()=>setToast(null),3500);};
-  const stages=species?getStagesForCategory(animalReqs,species):[];
-  const recs=species?SPECIES_RECS[species.toLowerCase().replace(/[^a-z0-9]/g,'_')]||null:null;
-  const getStatus=id=>{if(!recs)return'neutral';if(recs.avoid.includes(id))return'avoid';if(recs.required.includes(id))return'required';if(recs.recommended.includes(id))return'recommended';return'neutral';};
-  const statusSty=s=>({required:{border:`2px solid ${C.grass}`,background:'#f0f9f4'},recommended:{border:`2px solid ${C.savanna}`,background:'#fffbf0'},avoid:{border:`2px solid ${C.danger}`,background:'#fff0f0',opacity:0.65},neutral:{border:`1px solid ${C.border}`,background:'white'}}[s]);
-  const toggleI=id=>{const n=new Set(selIngrs);n.has(id)?n.delete(id):n.add(id);setSelIngrs(n);};
-  const getActive=()=>ingredients.filter(i=>selIngrs.has(i.id)).map(i=>({...i,price:parseFloat(prices[i.id]??i.price)}));
-  const getActiveWithANF=()=>ingredients.filter(i=>selIngrs.has(i.id)).map(i=>{
-    const base={...i,price:parseFloat(prices[i.id]??i.price)};
-    if(species){
-      const effMax=getEffectiveMaxIncl(base,species);
-      if(effMax===0)return null;
-      return{...base,maxIncl:Math.min(base.maxIncl??100,effMax)};
+
+  // ── Ingredient selection — auto-select all available inventory items ──────────
+  const availableIngredients=ingredients.filter(i=>{
+    const inv=inventory.find(x=>x.id===i.id);
+    return inv&&inv.qty>0;
+  });
+  const [selIngrs,setSelIngrs]=useState(()=>new Set(availableIngredients.map(i=>i.id)));
+
+  // Auto-update selection when inventory changes
+  useEffect(()=>{
+    const available=ingredients.filter(i=>{
+      const inv=inventory.find(x=>x.id===i.id);
+      return inv&&inv.qty>0;
+    });
+    setSelIngrs(new Set(available.map(i=>i.id)));
+  },[inventory.length]);
+
+  // ── Sell prices from inventory (not buy prices) ──────────────────────────────
+  // getSellPriceForIng: reads inventory sell price, falls back to lastPrice * 1.2
+  const getSellPriceForIng=(ing)=>{
+    const inv=inventory.find(x=>x.id===ing.id);
+    if(inv){
+      if(inv.sellPriceDirect) return inv.sellPriceDirect;
+      const margin=inv.margin||20;
+      return Math.round((inv.lastPrice||0)*(1+margin/100)*100)/100;
     }
-    return base;
-  }).filter(Boolean);
-  // Auto-solve when species+stage selected
+    return ing.sellPrice||ing.lastPrice||ing.price||0;
+  };
+
+  // ── Ingredient helper ─────────────────────────────────────────────────────────
+  const toggleI=id=>{const n=new Set(selIngrs);n.has(id)?n.delete(id):n.add(id);setSelIngrs(n);};
+  const getActive=()=>ingredients
+    .filter(i=>selIngrs.has(i.id))
+    .map(i=>({...i,price:getSellPriceForIng(i)})); // USE SELL PRICE
+  const getActiveWithANF=()=>ingredients
+    .filter(i=>selIngrs.has(i.id))
+    .map(i=>{
+      const base={...i,price:getSellPriceForIng(i)}; // USE SELL PRICE
+      if(species){
+        const effMax=getEffectiveMaxIncl(base,species);
+        if(effMax===0)return null;
+        return{...base,maxIncl:Math.min(base.maxIncl??100,effMax)};
+      }
+      return base;
+    }).filter(Boolean);
+
+  // ── ANF state ─────────────────────────────────────────────────────────────────
+  const [anfWarnings,setAnfWarnings]=useState([]);
+  const [anfExclusions,setAnfExclusions]=useState([]);
+
+  // ── Formula state ─────────────────────────────────────────────────────────────
+  const [formula,setFormula]=useState(null);
+  const [nutrients,setNutrients]=useState(null);
+  const [costPKg,setCostPKg]=useState(0);
+  const [solveQuality,setSolveQuality]=useState('');
+  const [loading,setLoading]=useState(false);
+
+  // ── Auto-solve when species+stage changes ─────────────────────────────────────
   useEffect(()=>{
     if(!species||!stage)return;
+    setFormula(null);setNutrients(null);setCostPKg(0);setAnfWarnings([]);setAnfExclusions([]);
     setLoading(true);
     const timer=setTimeout(()=>{
       const ingrs=getActiveWithANF();
-      const reqs=getReqForStage(animalReqs,species,stage);
-      if(!reqs){setLoading(false);return;}
-      const result=solveBestEffort(ingrs,reqs);
+      const req=getReqForStage(animalReqs,species,stage);
+      if(!req){setLoading(false);showT('No nutritional requirements found for this stage.','error');return;}
+      if(ingrs.length===0){setLoading(false);showT('No ingredients in stock. Add stock in Inventory first.','error');return;}
+      const result=solveBestEffort(ingrs,req);
       if(result&&result.formula){
         const n=calcNutrients(result.formula,ingrs);
         const c=calcCost(result.formula,ingrs);
         setFormula(result.formula);setNutrients(n);setCostPKg(c);
+        setSolveQuality(result.quality||'optimal');
         const {warnings,exclusions}=checkANFWarnings(result.formula,ingrs,species);
-        setAnfWarnings([...warnings,...(result.warnings||[]).map(w=>({...w,ingredient:w.nutrient,factor:'Nutrient Gap',note:w.note,severity:w.severity}))]);
+        const solverWarnings=(result.warnings||[]).map(w=>({ingredient:w.nutrient,factor:'Nutrient Gap',note:w.note,severity:w.severity}));
+        setAnfWarnings([...warnings,...solverWarnings]);
         setAnfExclusions(exclusions);
-        if(result.quality==='fallback')showT('Showing best available mix — add more ingredients for optimal formula.','warn');
-        else if(result.quality==='relaxed')showT('Optimal formula not found — showing best approximation.','warn');
       } else {
-        showT('Could not solve — try selecting more ingredients.','error');
+        showT('Could not find a solution. Try enabling more ingredients or check inventory stock.','error');
       }
       setLoading(false);
-    },400);
+    },500);
     return()=>clearTimeout(timer);
-  },[species,stage]);
+  },[species,stage,selIngrs.size]);
 
   const doFormulate=()=>{
-    if(!species||!stage)return;
+    if(!species||!stage){showT('Select species and stage first.','error');return;}
     setLoading(true);
+    const ingrs=getActiveWithANF();
+    const req=getReqForStage(animalReqs,species,stage);
+    if(!req){setLoading(false);showT('No nutritional requirements for this stage.','error');return;}
+    if(ingrs.length===0){setLoading(false);showT('No ingredients in stock.','error');return;}
     setTimeout(()=>{
-      const ingrs=getActiveWithANF();
-      const reqs=getReqForStage(animalReqs,species,stage);
-      const result=solveBestEffort(ingrs,reqs);
+      const result=solveBestEffort(ingrs,req);
       if(result&&result.formula){
-        const n=calcNutrients(result.formula,ingrs);const c=calcCost(result.formula,ingrs);
+        const n=calcNutrients(result.formula,ingrs);
+        const c=calcCost(result.formula,ingrs);
         setFormula(result.formula);setNutrients(n);setCostPKg(c);
+        setSolveQuality(result.quality||'optimal');
         const {warnings,exclusions}=checkANFWarnings(result.formula,ingrs,species);
-        setAnfWarnings([...warnings,...(result.warnings||[]).map(w=>({...w,ingredient:w.nutrient,factor:'Nutrient Gap',note:w.note,severity:w.severity}))]);
+        const solverWarnings=(result.warnings||[]).map(w=>({ingredient:w.nutrient,factor:'Nutrient Gap',note:w.note,severity:w.severity}));
+        setAnfWarnings([...warnings,...solverWarnings]);
         setAnfExclusions(exclusions);
-        if(result.quality!=='optimal')showT('Best available formula — add more ingredients for optimal solution.','warn');
-      } else showT('Could not solve — try selecting more ingredients.','error');
+      } else {
+        showT('Could not solve. Select more ingredients or check that they have stock.','error');
+      }
       setLoading(false);
-    },400);
+    },300);
   };
+
   const doSaveFormula=()=>{
     if(!formula||!fName)return;
     const saved=db.get('savedFormulas',[]);
-    db.set('savedFormulas',[...saved,{id:uid(),name:fName,species,stage,formula,nutrients,costPerKg:costPKg,customerId:custId||null,customerName:customers.find(c=>c.id===custId)?.name||'—',savedOn:today(),batchKg}]);
+    db.set('savedFormulas',[...saved,{id:uid(),name:fName,species,stage,formula,nutrients,
+      costPerKg:costPKg,customerId:custId||null,
+      customerName:customers.find(c=>c.id===custId)?.name||'—',savedOn:today(),batchKg}]);
+    serverPush('savedFormulas',db.get('savedFormulas',[]));
     setShowSave(false);setFName('');showT('Formula saved!');
   };
+
   const doInitSale=()=>{
-    const ingrs=getActive();
-    const items=Object.entries(formula).map(([id,pct])=>{const i=ingrs.find(x=>x.id===id);return{id,name:i?.name,pct,qty:(pct/100)*batchKg,pricePerKg:i?.price||0};});
+    const ingrs=getActiveWithANF();
+    const items=Object.entries(formula).map(([id,pct])=>{
+      const i=ingrs.find(x=>x.id===id);
+      const sp=getSellPriceForIng(i||{id});
+      return{id,name:i?.name,pct,qty:(pct/100)*batchKg,pricePerKg:sp};
+    });
     setPendingSale({items,totalCost:items.reduce((s,i)=>s+i.qty*i.pricePerKg,0)});
     setShowSell(true);
   };
+
   const doConfirmSale=()=>{
     if(!pendingSale||!selPrice)return;
-    const insuff=pendingSale.items.filter(item=>{const st=inventory.find(s=>s.id===item.id);return!st||st.qty<item.qty;});
+    const insuff=pendingSale.items.filter(item=>{
+      const st=inventory.find(s=>s.id===item.id);
+      return !st||st.qty<item.qty;
+    });
     if(insuff.length>0){showT('Insufficient stock: '+insuff.map(i=>i.name).join(', '),'error');return;}
-    setInventory(inventory.map(inv=>{const used=pendingSale.items.find(i=>i.id===inv.id);return used?{...inv,qty:Math.max(0,inv.qty-used.qty)}:inv;}));
+    setInventory(inventory.map(inv=>{
+      const used=pendingSale.items.find(i=>i.id===inv.id);
+      return used?{...inv,qty:Math.max(0,inv.qty-used.qty)}:inv;
+    }));
     const agreedTotal=parseFloat(selPrice)*batchKg;
+    const disc=0;
     const cust=customers.find(c=>c.id===custId);
-    setSales([...sales,{id:uid(),date:today(),species,stage,batchKg,customerId:custId||null,customer:cust?.name||'Walk-in',product:`${species} — ${stage} (${batchKg}kg)`,cost:pendingSale.totalCost,total:agreedTotal,profit:agreedTotal-pendingSale.totalCost,items:pendingSale.items}]);
-    setShowSell(false);setPendingSale(null);showT(`Sale recorded! Profit: ${fmtKES(agreedTotal-pendingSale.totalCost)}`);
+    const newSale={id:uid(),date:today(),species,stage,batchKg,
+      customerId:custId||null,customerName:cust?.name||'Walk-in',customer:cust?.name||'Walk-in',
+      product:`${species} — ${stage} (${batchKg}kg)`,
+      cost:pendingSale.totalCost,total:agreedTotal,
+      totalRevenue:agreedTotal,totalCost:pendingSale.totalCost,
+      profit:agreedTotal-pendingSale.totalCost,discount:disc,
+      sellPricePerKg:parseFloat(selPrice),items:pendingSale.items};
+    setSales([...sales,newSale]);
+    // Log to ledger
+    const ledger=db.get('stockLedger',[]);
+    const entry={id:uid(),type:'SALE',date:today(),product:newSale.product,
+      qty:batchKg,total:agreedTotal,costPerKg:costPKg,by:user?.name};
+    db.set('stockLedger',[...ledger,entry]);
+    serverPush('stockLedger',[...ledger,entry]);
+    setShowSell(false);setPendingSale(null);setSelPrice('');
+    showT('Sale recorded! Stock updated.');
   };
-  const cats=buildCategories(ingredients);
-  const ingrs=getActive();
-  const reqs=species&&stage?getReqForStage(animalReqs,species,stage):null;
+
+  // ── ANF status for ingredient cards ──────────────────────────────────────────
+  const getANFStatus=id=>{
+    if(!species)return'neutral';
+    const lim=getANFLimit(id,species);
+    if(!lim)return'neutral';
+    if(lim.maxPct===0)return'excluded';
+    if(lim.maxPct<=5)return'caution';
+    return'neutral';
+  };
+  const anfStatusStyle=s=>({
+    excluded:{border:`2px solid ${C.danger}`,background:'#fff0f0',opacity:0.7},
+    caution: {border:`2px solid ${C.harvest}`,background:'#fffbf0'},
+    neutral: {border:`1px solid ${C.border}`,background:'white'},
+  }[s]||{border:`1px solid ${C.border}`,background:'white'});
+
+  // ── Ingredient in-stock check ────────────────────────────────────────────────
+  const getInvItem=id=>inventory.find(x=>x.id===id);
+  const inStock=id=>{const inv=getInvItem(id);return inv&&inv.qty>0;};
+
+  // ── Formula table display ────────────────────────────────────────────────────
+  const formulaRows=formula?Object.entries(formula)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([id,pct],i,arr)=>{
+      const ing=ingredients.find(x=>x.id===id);
+      const sp=getSellPriceForIng(ing||{id});
+      const dpct=i===arr.length-1
+        ? Math.round((100-arr.slice(0,-1).reduce((s,[,p])=>s+Math.round(p*10)/10,0))*10)/10
+        : Math.round(pct*10)/10;
+      const qty=(dpct/100)*batchKg;
+      return{id,name:ing?.name||id,pct,dpct,qty,sellPricePerKg:sp,sellCost:qty*sp};
+    }):[];
+
+  // ── Nutrient display helper ──────────────────────────────────────────────────
+  const NutRow=({label,val,req,unit})=>{
+    if(!val&&val!==0)return null;
+    const v=Number(val).toFixed(unit==='kcal/kg'?0:2);
+    const inRange=!req||val>=req[0]*0.97;
+    const over=req&&val>req[1]*1.05;
+    return h('div',{style:{display:'flex',justifyContent:'space-between',padding:'5px 0',
+      borderBottom:`1px solid ${C.border}`,fontSize:12}},
+      h('span',{style:{color:C.muted}},label),
+      h('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+        req&&h('span',{style:{fontSize:10,color:C.muted}},req[0]+'-'+req[1]+unit),
+        h('span',{style:{fontFamily:"'DM Mono',monospace",fontWeight:700,
+          color:over?C.warning:inRange?C.grass:C.danger}},v+' '+unit)));
+  };
+
+  // ── RENDER ────────────────────────────────────────────────────────────────────
   return h('div',{style:{padding:'0 26px 26px'}},
     toast&&h(Toast,{msg:toast.msg,type:toast.type}),
-    h(PageHdr,{title:'Feed Formulator',subtitle:'Least-cost formulation with anti-nutritive factor guidance'}),
-    h('div',{style:{display:'grid',gridTemplateColumns:'300px 1fr',gap:17}},
-      // LEFT
+    h(PageHdr,{title:'Feed Formulator',
+      subtitle:'Least-cost optimal feed formulation with auto-selection and ANF awareness'}),
+
+    h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}},
+      // Left column: setup
       h('div',null,
-        h(Card,{style:{marginBottom:13}},h(CardTitle,null,'1 — Animal Profile'),
-          h('div',{style:{padding:15}},
-            h(Sel,{label:'Species',value:species,onChange:v=>{setSpecies(v);setStage('');setFormula(null);},options:[{value:'',label:'Select species…'},...speciesList.map(s=>({value:s.value,label:s.icon+' '+s.label}))]}),
-            h(Sel,{label:'Production Stage',value:stage,onChange:setStage,options:[{value:'',label:'Select stage…'},...stages.map(s=>({value:s,label:s}))]}),
-            h(Sel,{label:'Customer (optional)',value:custId,onChange:setCustId,options:[{value:'',label:'Walk-in / General'},...customers.map(c=>({value:c.id,label:c.name+(c.location?' — '+c.location:'')}))]}),
-            h(Inp,{label:'Batch Size (kg)',value:batchKg,onChange:setBatchKg,type:'number'}))),
-        recs&&h(Card,{style:{marginBottom:13,border:`1px solid ${C.savanna}44`}},h(CardTitle,null,'Ingredient Legend'),
-          h('div',{style:{padding:12}},
-            [{color:C.grass,label:'✅ Required — include these'},{color:C.savanna,label:'👍 Recommended'},{color:C.danger,label:'🚫 Avoid for this species'},{color:C.border,label:'Neutral'}]
-            .map((l,i)=>h('div',{key:i,style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},h('div',{style:{width:11,height:11,borderRadius:2,background:l.color}}),h('span',{style:{fontSize:12,color:C.soil}},l.label))),
-            recs.note&&h('div',{style:{background:'#fff8e6',border:`1px solid ${C.harvest}`,borderRadius:6,padding:'7px 10px',fontSize:11,color:C.soil,marginTop:7}},'⚠ '+recs.note))),
-        h(Card,{style:{marginBottom:13}},h(CardTitle,null,'2 — Select Ingredients'),
-          h('div',{style:{padding:12,maxHeight:380,overflowY:'auto'}},
-            cats.map(cat=>h('div',{key:cat.key,style:{marginBottom:11}},
-              h('div',{style:{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:1,color:cat.color,marginBottom:5,fontFamily:"'DM Mono',monospace"}},cat.icon+' '+cat.label),
-              cat.items.length===0&&h('div',{style:{fontSize:11,color:C.muted,fontStyle:'italic'}},'No ingredients in this category'),
-              h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}},
-                cat.items.map(ing=>{
-                  const st=getStatus(ing.id);const active=selIngrs.has(ing.id);
-                  return h('div',{key:ing.id,onClick:()=>toggleI(ing.id),
-                    style:{...statusSty(st),borderRadius:6,padding:'5px 7px',cursor:'pointer',fontSize:11,fontWeight:500,color:C.soil,transition:'all 0.15s',opacity:active?1:0.55,position:'relative',userSelect:'none'}},
-                    (active?'✓ ':'○ ')+ing.name,
-                    ing.antiNote&&h('span',{title:ing.antiNote,style:{position:'absolute',top:2,right:4,fontSize:9,color:C.warning,fontWeight:700}},'⚠'));
-                })))))),
-        h(Card,{style:{marginBottom:13}},h(CardTitle,null,'3 — Prices (KES/kg)'),
-          h('div',{style:{padding:12,maxHeight:200,overflowY:'auto'}},
-            ingredients.filter(i=>selIngrs.has(i.id)).map(ing=>
-              h('div',{key:ing.id,style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
-                h('span',{style:{flex:1,fontSize:11,color:C.soil}},ing.name),
-                h('input',{type:'number',value:prices[ing.id]??ing.price,onChange:e=>setPrices({...prices,[ing.id]:e.target.value}),
-                  style:{width:68,padding:'4px 7px',border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,fontFamily:"'DM Mono',monospace",background:C.cream}}))))),
-        h(Btn,{onClick:doFormulate,disabled:!species||!stage||loading,size:'lg',style:{width:'100%'}},loading?'Optimising…':'⚗ Formulate Feed →')),
-      // RIGHT
+        // Section 1: Animal
+        h(Card,{style:{marginBottom:12}},
+          h(CardTitle,null,'1 — Animal'),
+          h('div',{style:{padding:'0 14px 14px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+            h(Sel,{label:'Species',value:species,onChange:v=>{setSpecies(v);setStage('');setFormula(null);},
+              options:[{value:'',label:'Select species…'},...speciesList.map(s=>({value:s.value,label:s.icon+' '+s.label}))]}),
+            h(Sel,{label:'Stage',value:stage,onChange:v=>{setStage(v);setFormula(null);},
+              options:[{value:'',label:'Select stage…'},...stages.map(s=>({value:s,label:s}))],
+              disabled:!species}),
+            h('div',null,Inp({label:'Batch Size (kg)',value:batchKg,onChange:v=>setBatchKg(parseFloat(v)||100),type:'number'})),
+            h('div',null,h(Sel,{label:'Customer (optional)',value:custId,onChange:setCustId,
+              options:[{value:'',label:'Walk-in customer'},...customers.map(c=>({value:c.id,label:c.name}))]})))),
+
+        // Section 2: Ingredients
+        h(Card,{style:{marginBottom:12}},
+          h(CardTitle,null,`2 — Ingredients (${selIngrs.size} selected, ${availableIngredients.length} in stock)`),
+          h('div',{style:{padding:'0 12px 12px'}},
+            h('div',{style:{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap'}},
+              h(Btn,{size:'sm',variant:'secondary',
+                onClick:()=>setSelIngrs(new Set(availableIngredients.map(i=>i.id)))},'Select All In-Stock'),
+              h(Btn,{size:'sm',variant:'secondary',onClick:()=>setSelIngrs(new Set())},'Clear All')),
+            h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:6}},
+              ingredients.map(ing=>{
+                const inv=getInvItem(ing.id);
+                const hasStock=inv&&inv.qty>0;
+                const sel=selIngrs.has(ing.id);
+                const anfStat=getANFStatus(ing.id);
+                return h('div',{key:ing.id,onClick:()=>toggleI(ing.id),
+                  style:{padding:'7px 9px',borderRadius:8,cursor:'pointer',userSelect:'none',
+                    transition:'all 0.15s',position:'relative',
+                    ...(sel?{border:`2px solid ${C.grass}`,background:'#f0f9f4'}:{...anfStatusStyle(anfStat),opacity:hasStock?1:0.45})}},
+                  sel&&h('div',{style:{position:'absolute',top:3,right:5,fontSize:10,color:C.grass,fontWeight:700}},'✓'),
+                  anfStat==='excluded'&&h('div',{style:{position:'absolute',top:3,right:5,fontSize:10,color:C.danger}},'🚫'),
+                  anfStat==='caution'&&h('div',{style:{position:'absolute',top:3,right:5,fontSize:10}},'⚠️'),
+                  h('div',{style:{fontSize:11,fontWeight:600,color:C.earth,lineHeight:1.3}},ing.name),
+                  h('div',{style:{fontSize:10,color:C.muted,marginTop:2}},
+                    hasStock?`${fmt(inv.qty)} kg · KES ${getSellPriceForIng(ing)}/kg`:'No stock'));
+              })))),
+
+        // Section 3: Sell Prices (read-only from inventory)
+        formula&&h(Card,null,
+          h(CardTitle,null,'3 — Sell Prices (from Inventory)'),
+          h('div',{style:{padding:'0 12px 12px'}},
+            h('div',{style:{background:'#f0f9f4',border:'1px solid '+C.leaf,borderRadius:8,
+              padding:'8px 12px',fontSize:12,color:C.soil,marginBottom:10}},
+              '💡 Sell prices are set in Inventory → 💲 Price button. To change a price, update it there.'),
+            formulaRows.map(row=>h('div',{key:row.id,
+              style:{display:'flex',justifyContent:'space-between',alignItems:'center',
+                padding:'6px 0',borderBottom:`1px solid ${C.border}`}},
+              h('span',{style:{fontSize:12,color:C.earth,fontWeight:600}},row.name),
+              h('span',{style:{fontSize:12,fontFamily:"'DM Mono',monospace",color:C.grass,fontWeight:700}},
+                'KES '+row.sellPricePerKg+'/kg')))))),
+
+      // Right column: results
       h('div',null,
-        formula&&nutrients&&reqs?h('div',null,
-          // Anti-nutritive factor warnings (NRC/ILRI standards)
-          [...anfWarnings,...anfExclusions.map(e=>({...e,severity:'danger',current:'included',maxPct:0}))].map((w,i)=>
-            h('div',{key:i,style:{display:'flex',gap:10,padding:'9px 13px',borderRadius:8,marginBottom:6,
+        // Auto-solve status + formulate button
+        h(Card,{style:{marginBottom:12}},
+          h('div',{style:{padding:'12px 14px'}},
+            h('div',{style:{display:'flex',gap:8,alignItems:'center',marginBottom:8}},
+              h(Btn,{onClick:doFormulate,variant:'success',disabled:loading||!species||!stage},
+                loading?'⏳ Solving…':'🧮 Formulate'),
+              formula&&solveQuality&&h('span',{style:{fontSize:11,padding:'3px 10px',borderRadius:12,
+                background:solveQuality==='optimal'?'#f0f9f4':solveQuality==='good'?'#f0f9f4':'#fff8e6',
+                color:solveQuality==='optimal'?C.grass:solveQuality==='good'?C.grass:C.savanna,
+                border:'1px solid '+(solveQuality==='optimal'?C.leaf:C.harvest)}},
+                solveQuality==='optimal'?'✓ Optimal solution':
+                solveQuality==='good'?'✓ Good solution':
+                solveQuality==='relaxed'?'⚠ Approximated':
+                '⚠ Fallback mix')),
+            !species&&h('div',{style:{fontSize:12,color:C.muted}},'Select species and stage above — formula auto-generates.'),
+            species&&stage&&!formula&&!loading&&h('div',{style:{fontSize:12,color:C.muted}},'Auto-solving…'),
+            loading&&h('div',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13,color:C.muted}},
+              h('div',{className:'spin',style:{width:16,height:16,border:'2px solid '+C.border,
+                borderTopColor:C.grass,borderRadius:'50%'}}),
+              'Finding optimal least-cost formula…'))),
+
+        // ANF warnings
+        (anfWarnings.length>0||anfExclusions.length>0)&&h(Card,{style:{marginBottom:12}},
+          h('div',{style:{padding:'10px 14px'}},
+            anfExclusions.map((e,i)=>h('div',{key:'ex'+i,style:{display:'flex',gap:8,padding:'7px 10px',
+              borderRadius:7,background:'#fde8e8',border:'1px solid '+C.danger+'44',marginBottom:5}},
+              h('span',null,'🚫'),
+              h('div',null,
+                h('div',{style:{fontWeight:700,fontSize:12,color:C.danger}},e.ingredient+' EXCLUDED — '+e.factor),
+                h('div',{style:{fontSize:11,color:C.muted}},e.note)))),
+            anfWarnings.map((w,i)=>h('div',{key:'w'+i,style:{display:'flex',gap:8,padding:'7px 10px',
+              borderRadius:7,marginBottom:4,
               background:w.severity==='danger'?'#fde8e8':'#fff8e6',
-              border:'1px solid '+(w.severity==='danger'?C.danger:C.harvest)+'55'}},
-              h('span',{style:{fontSize:16}},w.severity==='danger'?'🚫':'⚠️'),
+              border:'1px solid '+(w.severity==='danger'?C.danger:C.harvest)+'44'}},
+              h('span',null,w.severity==='danger'?'❌':'⚠️'),
               h('div',null,
                 h('div',{style:{fontWeight:700,fontSize:12,color:w.severity==='danger'?C.danger:C.savanna}},
-                  w.ingredient+(w.maxPct===0?' — EXCLUDED for this species':' — '+w.factor+' at '+w.current+'% (limit: '+w.maxPct+'%)')),
-                h('div',{style:{fontSize:11,color:C.muted,marginTop:2,lineHeight:1.5}},w.note)))),
-          h(Card,{style:{marginBottom:13}},
-            h('div',{style:{background:`linear-gradient(135deg,${C.earth},${C.soil})`,padding:'15px 19px',display:'flex',justifyContent:'space-between',alignItems:'center'}},
-              h('div',null,
-                h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:17,color:'white',fontWeight:700}},species+' — '+stage),
-                h('div',{style:{fontSize:12,color:'rgba(255,255,255,0.6)',marginTop:2}},batchKg+'kg batch')),
-              h('div',{style:{textAlign:'right'}},
-                h('div',{style:{fontSize:24,fontFamily:"'Playfair Display',serif",fontWeight:900,color:C.harvest}},fmtKES(costPKg)+'/kg'),
-                h('div',{style:{fontSize:12,color:'rgba(255,255,255,0.6)'}},'Total: '+fmtKES(costPKg*batchKg)))),
-            // nutrient cards
-            h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:9,padding:15}},
-              [{name:'Crude Protein',val:nutrients.cp.toFixed(1),unit:'%',req:reqs.cp},
-               {name:'ME kcal/kg',val:Math.round(nutrients.me),unit:'',req:reqs.me},
-               {name:'Crude Fat',val:nutrients.fat.toFixed(1),unit:'%',req:reqs.fat},
-               {name:'Crude Fibre',val:nutrients.fibre.toFixed(1),unit:'%',req:[0,reqs.fibre[1]]},
-               {name:'Calcium Ca',val:nutrients.ca.toFixed(2),unit:'%',req:reqs.ca},
-               {name:'Phosphorus P',val:nutrients.p.toFixed(2),unit:'%',req:reqs.p},
-               {name:'Lysine',val:(nutrients.lys||0).toFixed(2),unit:'%',req:reqs.lys||[0,99]},
-               {name:'Methionine',val:(nutrients.met||0).toFixed(2),unit:'%',req:reqs.met||[0,99]}]
-              .map((n,i)=>{const v=parseFloat(n.val);const ok=v>=n.req[0]&&v<=n.req[1];
-                return h('div',{key:i,style:{background:ok?'#f0f9f4':'#fff0f0',border:`1px solid ${ok?C.leaf:C.danger}44`,borderRadius:8,padding:'9px 11px'}},
-                  h('div',{style:{fontSize:10,fontFamily:"'DM Mono',monospace",color:C.muted,textTransform:'uppercase',letterSpacing:1}},n.name),
-                  h('div',{style:{fontSize:19,fontFamily:"'Playfair Display',serif",fontWeight:700,color:ok?C.grass:C.danger}},n.val+n.unit),
-                  h('div',{style:{fontSize:10,color:C.muted}},'Target: '+n.req[0]+'–'+n.req[1]+n.unit));})),
-            // formula table
-            h(Tbl,{cols:[
-              {key:'name',label:'Ingredient'},{key:'pct',label:'Inclusion %',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace",fontWeight:700}},r.pct.toFixed(1)+'%')},
-              {key:'qty',label:`Qty (${batchKg}kg)`,render:r=>((r.pct/100)*batchKg).toFixed(1)+' kg'},
-              {key:'price',label:'Unit Price',render:r=>fmtKES(r.price)+'/kg'},
-              {key:'cost',label:'Cost',render:r=>fmtKES((r.pct/100)*batchKg*r.price)},
-              {key:'stock',label:'In Stock',render:r=>{const inv=inventory.find(i=>i.id===r.id);return inv?h('span',{style:{color:inv.qty>=(r.pct/100)*batchKg?C.grass:C.danger,fontFamily:"'DM Mono',monospace",fontSize:12}},fmt(inv.qty)+' kg'):h('span',{style:{color:C.muted}},'—');}},
-            ],rows:Object.entries(formula).sort((a,b)=>b[1]-a[1]).map(([id,pct])=>{const i=ingrs.find(x=>x.id===id);return{id,name:i?.name||id,pct,price:i?.price||0};})}),
-            h('div',{style:{display:'flex',gap:10,padding:15,borderTop:`1px solid ${C.border}`}},
-              h(Btn,{onClick:()=>setShowSave(true),variant:'secondary'},'💾 Save Formula'),
-              h(Btn,{onClick:doInitSale,variant:'success',size:'lg'},'🛒 Send to Sell'))))
-        :h(Card,null,h('div',{style:{padding:'70px 20px',textAlign:'center'}},h('div',{style:{fontSize:54,marginBottom:14}},'⚗'),h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:19,color:C.clay,marginBottom:7}},'Ready to Formulate'),h('div',{style:{fontSize:13,color:C.muted,maxWidth:280,margin:'0 auto',lineHeight:1.6}},'Select species, stage, and ingredients then click Formulate Feed.')))),
-    ),
-    // Save formula modal
-    showSave&&h(Modal,{title:'Save Formula',onClose:()=>setShowSave(false)},
-      h(Inp,{label:'Formula Name',value:fName,onChange:setFName,placeholder:"e.g. John's Broiler Starter",required:true}),
-      h('div',{style:{fontSize:13,color:C.muted,marginBottom:15}},'Saving for: ',h('strong',null,customers.find(c=>c.id===custId)?.name||'General / Walk-in')),
-      h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},h(Btn,{onClick:()=>setShowSave(false),variant:'secondary'},'Cancel'),h(Btn,{onClick:doSaveFormula},'Save Formula'))),
-    // Sell modal
-    showSell&&pendingSale&&h(Modal,{title:'🛒 Send to Sell',onClose:()=>{setShowSell(false);setPendingSale(null);},width:480},
-      h('div',{style:{background:C.parchment,borderRadius:10,padding:15,marginBottom:15}},
-        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
-          h('div',null,h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1}},'Batch Size'),h('div',{style:{fontSize:18,fontWeight:700,color:C.earth,fontFamily:"'Playfair Display',serif"}},batchKg+' kg')),
-          h('div',null,h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1}},'Cost Price'),h('div',{style:{fontSize:18,fontWeight:700,color:C.danger,fontFamily:"'Playfair Display',serif"}},fmtKES(pendingSale.totalCost))))),
-      h(Inp,{label:'Selling Price per kg (KES)',value:selPrice,onChange:setSelPrice,type:'number',placeholder:`Min: ${(pendingSale.totalCost/batchKg*1.15).toFixed(0)} (15% margin)`}),
-      selPrice&&h('div',{style:{background:parseFloat(selPrice)*batchKg>=pendingSale.totalCost?'#f0f9f4':'#fff0f0',border:`1px solid ${parseFloat(selPrice)*batchKg>=pendingSale.totalCost?C.grass:C.danger}44`,borderRadius:8,padding:13,marginBottom:14}},
-        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,textAlign:'center'}},
-          [{lbl:'Total Sale',val:fmtKES(parseFloat(selPrice)*batchKg),c:C.earth},{lbl:'Profit',val:fmtKES(parseFloat(selPrice)*batchKg-pendingSale.totalCost),c:parseFloat(selPrice)*batchKg>=pendingSale.totalCost?C.grass:C.danger},{lbl:'Margin',val:((parseFloat(selPrice)*batchKg-pendingSale.totalCost)/(parseFloat(selPrice)*batchKg)*100).toFixed(1)+'%',c:C.earth}]
-          .map((x,i)=>h('div',{key:i},h('div',{style:{fontSize:10,color:C.muted}},x.lbl),h('div',{style:{fontSize:15,fontWeight:700,color:x.c,fontFamily:"'Playfair Display',serif"}},x.val))))),
-      h('div',{style:{fontSize:12,color:C.muted,marginBottom:14}},'⚡ If customer agrees, stock will be deducted and a sale recorded. If they decline, click Cancel.'),
-      h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
-        h(Btn,{onClick:()=>{setShowSell(false);setPendingSale(null);},variant:'secondary'},'Customer Declined'),
-        h(Btn,{onClick:doConfirmSale,variant:'success',disabled:!selPrice||parseFloat(selPrice)<=0},'✅ Customer Agreed — Record Sale'))));
+                  w.ingredient+(w.factor?' — '+w.factor:'')+
+                  (w.current?' at '+w.current+'%'+' (limit: '+w.maxPct+'%)':'')),
+                h('div',{style:{fontSize:11,color:C.muted}},w.note)))))),
+
+        // Formula table
+        formula&&nutrients&&h(Card,{style:{marginBottom:12}},
+          h('div',{style:{background:`linear-gradient(135deg,${C.earth},${C.soil})`,
+            padding:'13px 17px',display:'flex',justifyContent:'space-between',alignItems:'center'}},
+            h('div',null,
+              h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:15,color:'white',fontWeight:700}},species+' — '+stage),
+              h('div',{style:{fontSize:11,color:'rgba(255,255,255,0.6)',marginTop:2}},batchKg+'kg batch')),
+            h('div',{style:{textAlign:'right'}},
+              h('div',{style:{fontSize:22,fontFamily:"'Playfair Display',serif",fontWeight:900,color:C.harvest}},
+                'KES '+costPKg.toFixed(2)+'/kg'),
+              h('div',{style:{fontSize:11,color:'rgba(255,255,255,0.6)'}},'Total: KES '+(costPKg*batchKg).toFixed(0)))),
+          h('div',{style:{overflowX:'auto'}},
+            h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:12}},
+              h('thead',null,h('tr',null,
+                ['Ingredient','%','Qty (kg)','Sell KES/kg','Sell Cost','In Stock'].map((col,i)=>
+                  h('th',{key:i,style:{padding:'7px 10px',background:C.parchment,color:C.earth,
+                    textAlign:i>0?'right':'left',fontSize:10,textTransform:'uppercase',letterSpacing:1}},col)))),
+              h('tbody',null,formulaRows.map((row,i)=>{
+                const inv=getInvItem(row.id);
+                const ok=inv&&inv.qty>=row.qty;
+                return h('tr',{key:row.id,style:{borderBottom:'1px solid '+C.border,background:i%2===0?C.cream:'white'}},
+                  h('td',{style:{padding:'7px 10px',fontWeight:600,color:C.earth}},row.name),
+                  h('td',{style:{padding:'7px 10px',textAlign:'right',fontFamily:"'DM Mono',monospace"}},row.dpct+'%'),
+                  h('td',{style:{padding:'7px 10px',textAlign:'right',fontFamily:"'DM Mono',monospace"}},row.qty.toFixed(1)),
+                  h('td',{style:{padding:'7px 10px',textAlign:'right',fontFamily:"'DM Mono',monospace",color:C.grass,fontWeight:700}},'KES '+row.sellPricePerKg),
+                  h('td',{style:{padding:'7px 10px',textAlign:'right',fontFamily:"'DM Mono',monospace"}},'KES '+(row.sellCost).toFixed(0)),
+                  h('td',{style:{padding:'7px 10px',textAlign:'right'}},
+                    h(Badge,{color:ok?C.grass:C.danger},ok?'✓ OK':'Low')));
+              })))),
+          h('div',{style:{padding:'10px 14px',borderTop:'1px solid '+C.border,
+            display:'flex',gap:8,justifyContent:'flex-end',flexWrap:'wrap'}},
+            h(Btn,{onClick:()=>setShowSave(true),variant:'secondary',size:'sm'},'💾 Save Formula'),
+            formula&&h(Btn,{onClick:doInitSale,variant:'success',size:'sm'},'🛒 Sell This Batch'))),
+
+        // Nutrients
+        formula&&nutrients&&reqs&&h(Card,null,
+          h(CardTitle,null,'Nutritional Analysis'),
+          h('div',{style:{padding:'0 14px 14px'}},
+            h(NutRow,{label:'Crude Protein',val:nutrients.cp,req:reqs.cp,unit:'%'}),
+            h(NutRow,{label:'Metabolisable Energy',val:nutrients.me,req:reqs.me,unit:'kcal/kg'}),
+            h(NutRow,{label:'Crude Fat',val:nutrients.fat,req:reqs.fat,unit:'%'}),
+            h(NutRow,{label:'Crude Fibre',val:nutrients.fibre,req:reqs.fibre,unit:'%'}),
+            h(NutRow,{label:'Calcium',val:nutrients.ca,req:reqs.ca,unit:'%'}),
+            h(NutRow,{label:'Phosphorus',val:nutrients.p,req:reqs.p,unit:'%'}),
+            h(NutRow,{label:'Lysine',val:nutrients.lys,req:reqs.lys,unit:'%'}),
+            h(NutRow,{label:'Methionine',val:nutrients.met,req:reqs.met,unit:'%'}))))),
+
+    // ── Save formula modal ──────────────────────────────────────────────────────
+    showSave&&h(Modal,{title:'Save Formula',onClose:()=>setShowSave(false),width:400},
+      Inp({label:'Formula Name',value:fName,onChange:setFName,placeholder:'e.g. Broiler Starter March 2024'}),
+      h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:14}},
+        h(Btn,{onClick:()=>setShowSave(false),variant:'secondary'},'Cancel'),
+        h(Btn,{onClick:doSaveFormula,variant:'success',disabled:!fName},'Save'))),
+
+    // ── Sell modal ──────────────────────────────────────────────────────────────
+    showSell&&pendingSale&&h(Modal,{title:'Confirm Sale',onClose:()=>setShowSell(false),width:480},
+      h('div',{style:{background:C.parchment,borderRadius:8,padding:'11px 14px',marginBottom:14}},
+        h('div',{style:{fontWeight:700,color:C.earth,marginBottom:6}},species+' — '+stage+' ('+batchKg+'kg)'),
+        h('div',{style:{fontSize:13,color:C.muted}},'Cost of ingredients: ',
+          h('strong',{style:{color:C.danger}},'KES '+pendingSale.totalCost.toFixed(2)))),
+      Inp({label:'Agreed Sell Price (KES/kg)',value:selPrice,onChange:setSelPrice,
+        type:'number',placeholder:'e.g. 65'}),
+      selPrice&&h('div',{style:{background:'#f0f9f4',borderRadius:8,padding:'10px 14px',fontSize:13}},
+        h('div',null,'Total Revenue: ',h('strong',{style:{color:C.grass}},
+          'KES '+(parseFloat(selPrice)*batchKg).toFixed(2))),
+        h('div',null,'Profit: ',h('strong',{style:{color:(parseFloat(selPrice)*batchKg-pendingSale.totalCost)>=0?C.grass:C.danger}},
+          'KES '+(parseFloat(selPrice)*batchKg-pendingSale.totalCost).toFixed(2)))),
+      h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
+        h(Btn,{onClick:()=>setShowSell(false),variant:'secondary'},'Cancel'),
+        h(Btn,{onClick:doConfirmSale,variant:'success',disabled:!selPrice||parseFloat(selPrice)<=0},
+          '✅ Customer Agreed — Record Sale')));
 }
 
-// ── SALES ─────────────────────────────────────────────────────────────────────
 
 function SalesPage(){
   const {sales,setSales,inventory,setInventory,user}=useContext(Ctx);
