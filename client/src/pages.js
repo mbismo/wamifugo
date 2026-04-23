@@ -1464,6 +1464,76 @@ function TraceabilityPage(){
 }
 
 
+function ResourcesPage(){
+  const {ingredients,inventory,sales,purchases,customers}=useContext(Ctx)||{};
+  const [toast,setToast]=useState(null);
+  const showT=(msg,type='success')=>{setToast({msg,type});setTimeout(()=>setToast(null),3500);};
+
+  function dlCSV(rows,filename){
+    const csv=rows.map(r=>r.map(c=>{
+      const s=String(c??'').replace(/"/g,'\"');
+      return s.includes(',')||s.includes('\n')?`"${s}"`:s;
+    }).join(',')).join('\n');
+    const a=document.createElement('a');
+    a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+    a.download=filename;a.click();
+  }
+
+  function printReport(title,rows,headers){
+    const w=window.open('','_blank');
+    const th=headers.map(h=>`<th style="background:#3d2b1f;color:white;padding:8px 10px;text-align:left;font-size:11px">${h}</th>`).join('');
+    const tbody=rows.map((row,i)=>
+      `<tr style="background:${i%2?'#faf6ee':'white'}">${row.map(c=>`<td style="padding:6px 10px;font-size:11px;border-bottom:1px solid #e8e0d4">${c??''}</td>`).join('')}</tr>`
+    ).join('');
+    w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+    <style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#3d2b1f}table{border-collapse:collapse;width:100%}@media print{button{display:none}}</style>
+    </head><body>
+    <h1>🌾 ${title}</h1>
+    <p style="color:#7a6a55;font-size:12px">Generated: ${new Date().toLocaleString('en-KE')} | Wa-Mifugo Feeds</p>
+    <table><thead><tr>${th}</tr></thead><tbody>${tbody}</tbody></table>
+    <br><button onclick="window.print()" style="background:#3d2b1f;color:white;padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨 Print / Save PDF</button>
+    </body></html>`);
+    w.document.close();
+  }
+
+  const exports=[
+    {icon:'🧂',title:'Ingredients',desc:'Nutrient profiles, prices, inclusion limits',
+      onCSV:()=>dlCSV([['ID','Name','Category','Price (KES/kg)','CP%','ME kcal/kg','Ca%','P%','Lys%','Met%','Min Incl%','Max Incl%'],...(ingredients||[]).map(i=>[i.id,i.name,i.category||'',i.price||0,i.cp||0,i.me||0,i.ca||0,i.p||0,i.lys||0,i.met||0,i.minIncl||0,i.maxIncl||100])],'ingredients.csv'),
+      onPrint:()=>printReport('Ingredient Register',(ingredients||[]).map(i=>[i.name,i.category||'','KES '+i.price,i.cp,i.me,i.ca,i.p]),['Ingredient','Category','Price/kg','CP%','ME','Ca%','P%'])},
+    {icon:'📦',title:'Inventory',desc:'Current stock levels and valuations',
+      onCSV:()=>dlCSV([['Name','Category','Stock (kg)','Buy Price','Sell Price','Stock Value'],...(inventory||[]).map(i=>[i.name,i.category||'',i.qty||0,i.lastPrice||0,i.sellPrice||'','KES '+(((i.qty||0)*(i.lastPrice||0)).toLocaleString())])],'inventory.csv'),
+      onPrint:()=>printReport('Inventory Report',(inventory||[]).map(i=>[i.name,i.qty+' kg','KES '+i.lastPrice,'KES '+((i.qty||0)*(i.lastPrice||0)).toLocaleString()]),['Ingredient','Stock','Buy Price','Stock Value'])},
+    {icon:'💰',title:'Sales',desc:'All sales records with profit analysis',
+      onCSV:()=>dlCSV([['Date','Customer','Product','Batch kg','Revenue','Cost','Profit'],...(sales||[]).map(s=>[s.date,s.customerName||s.customer||'',s.product,s.batchKg,s.total||s.totalRevenue||0,s.cost||s.totalCost||0,s.profit||0])],'sales.csv'),
+      onPrint:()=>printReport('Sales Report',(sales||[]).map(s=>[s.date,s.customerName||s.customer||'',s.product,s.batchKg+'kg','KES '+(s.total||s.totalRevenue||0).toLocaleString()]),['Date','Customer','Product','Batch','Revenue'])},
+    {icon:'🛒',title:'Purchases',desc:'All stock purchase records',
+      onCSV:()=>dlCSV([['Date','Ingredient','Qty (kg)','Cost/kg','Total','Supplier'],...(purchases||[]).map(p=>[p.date,p.itemName,p.qty,p.costPerKg,p.total,p.supplier||''])],'purchases.csv'),
+      onPrint:()=>printReport('Purchase Records',(purchases||[]).map(p=>[p.date,p.itemName,p.qty+'kg','KES '+p.costPerKg,'KES '+(p.total||0).toLocaleString(),p.supplier||'']),['Date','Ingredient','Qty','Cost/kg','Total','Supplier'])},
+    {icon:'👥',title:'Customers',desc:'Customer directory',
+      onCSV:()=>dlCSV([['Name','Phone','Email','Location'],...(customers||[]).map(c=>[c.name,c.phone||'',c.email||'',c.location||''])],'customers.csv'),
+      onPrint:()=>printReport('Customer Directory',(customers||[]).map(c=>[c.name,c.phone||'',c.email||'',c.location||'']),['Name','Phone','Email','Location'])},
+    {icon:'🔬',title:'Animal Requirements',desc:'Nutritional targets by species and stage',
+      onCSV:()=>dlCSV([['Category','Stage','CP Min','CP Max','ME Min','ME Max','Ca Min','Ca Max','P Min','P Max'],...SEED_ANIMAL_REQS.map(a=>[a.category,a.stage,...a.cp,...a.me,...a.ca,...a.p])],'animal_requirements.csv'),
+      onPrint:()=>printReport('Animal Nutritional Requirements',SEED_ANIMAL_REQS.map(a=>[a.category,a.stage,a.cp.join('-'),a.me.join('-'),a.ca.join('-'),a.p.join('-')]),['Category','Stage','CP%','ME kcal/kg','Ca%','P%'])},
+  ];
+
+  return h('div',{style:{padding:'0 26px 26px'}},
+    toast&&h(Toast,{msg:toast.msg,type:toast.type}),
+    h(PageHdr,{title:'Resources',subtitle:'Export data to CSV, print PDF reports'}),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:14}},
+      exports.map((ex,i)=>h(Card,{key:i,style:{marginBottom:0}},
+        h('div',{style:{padding:'14px 16px'}},
+          h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:10}},
+            h('span',{style:{fontSize:24}},ex.icon),
+            h('div',null,
+              h('div',{style:{fontWeight:700,color:C.earth,fontSize:14}},ex.title),
+              h('div',{style:{fontSize:12,color:C.muted}},ex.desc))),
+          h('div',{style:{display:'flex',gap:8}},
+            h(Btn,{onClick:ex.onCSV,size:'sm',variant:'secondary'},'⬇ Export CSV'),
+            h(Btn,{onClick:ex.onPrint,size:'sm',variant:'secondary'},'🖨 Print PDF')))))));
+}
+
+
 export default function Pages({ page, setPage, user, onLogin, onLogout, sidebarOpen, setSidebarOpen }) {
   const ctx = useContext(Ctx);
   const animalReqs = ctx?.animalReqs;
@@ -1471,19 +1541,19 @@ export default function Pages({ page, setPage, user, onLogin, onLogout, sidebarO
   if (!user) return h(LoginPage, { onLogin });
 
   const pageMap = {
-    dashboard:     h(DashboardPage, null),
-    formulator:    h(FormulatorPage, null),
-    inventory:     h(InventoryPage, null),
-    customers:     h(CustomersPage, null),
-    sales:         h(SalesPage, null),
-    reports:       h(ReportsPage, null),
-    feeding_guide: h(FeedingGuidePage, null),
-    education:     h(EducationPage, null),
-    resources:     h(ResourcesPage, null),
-    traceability:  user.role==='admin'?h(TraceabilityPage,null):h(DashboardPage,null),
-    ingredients:   user.role === "admin" ? h(IngredientsPage, null) : h(DashboardPage, null),
-    nutrition:     user.role === "admin" ? h(NutritionPage, null)   : h(DashboardPage, null),
-    users:         user.role === "admin" ? h(UsersPage, { currentUser: user }) : h(DashboardPage, null),
+    dashboard:     ()=>h(DashboardPage, null),
+    formulator:    ()=>h(FormulatorPage, null),
+    inventory:     ()=>h(InventoryPage, null),
+    customers:     ()=>h(CustomersPage, null),
+    sales:         ()=>h(SalesPage, null),
+    reports:       ()=>h(ReportsPage, null),
+    feeding_guide: ()=>h(FeedingGuidePage, null),
+    education:     ()=>h(EducationPage, null),
+    resources:     ()=>h(ResourcesPage, null),
+    traceability:  ()=>user.role==='admin'?h(TraceabilityPage,null):h(DashboardPage,null),
+    ingredients:   ()=>user.role === "admin" ? h(IngredientsPage, null) : h(DashboardPage, null),
+    nutrition:     ()=>user.role === "admin" ? h(NutritionPage, null)   : h(DashboardPage, null),
+    users:         ()=>user.role === "admin" ? h(UsersPage, { currentUser: user }) : h(DashboardPage, null),
   };
 
   return h("div", { style: { display:"flex", minHeight:"100vh", background:"#f8f5ee" } },
@@ -1497,5 +1567,5 @@ export default function Pages({ page, setPage, user, onLogin, onLogout, sidebarO
     h("div", { className:"wm-overlay", onClick: () => setSidebarOpen(false) }),
     h(Sidebar, { page, setPage, user, onLogout, isOpen: sidebarOpen, onClose: () => setSidebarOpen(false) }),
     h("div", { className:"wm-main", style: { flex:1, overflow:"auto", paddingTop:20 } },
-      pageMap[page] || pageMap.dashboard));
+      (pageMap[page] || pageMap.dashboard)()));
 }
