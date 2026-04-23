@@ -1338,11 +1338,21 @@ export const SPECIES_RECS = {
 };
 
 export const TIPS = [
-  {icon:'💡',text:'Always weigh ingredients accurately — small errors compound over large batches.'},
-  {icon:'🌡️',text:'Store feed ingredients in cool, dry conditions to prevent mycotoxin growth.'},
-  {icon:'🔬',text:'Run proximate analysis on local ingredients annually — nutrient values vary by season.'},
-  {icon:'💰',text:'Least-cost formulation assumes ingredient prices change weekly — update prices regularly.'},
-  {icon:'⚖️',text:'The LP solver finds the mathematically optimal mix, but always check physical palatability.'},
+  {icon:'⚖️', cat:'cost',     tag:'Cost Control',  title:'Weigh Every Ingredient',           body:'Small weighing errors compound dramatically in large batches. A 1% error on a 1,000 kg batch wastes 10 kg of expensive protein source.'},
+  {icon:'🌡️', cat:'storage',  tag:'Storage',        title:'Keep Feed Dry & Cool',             body:'Store ingredients below 25°C with humidity under 70%. Mycotoxins produced in damp storage can silently kill animals and reduce productivity.'},
+  {icon:'🔬', cat:'nutrition', tag:'Nutrition',      title:'Test Your Local Ingredients',      body:'Run proximate analysis on local maize and protein sources annually. Nutrient values vary by season, variety, and growing conditions.'},
+  {icon:'💰', cat:'cost',     tag:'Cost Control',  title:'Update Prices Weekly',             body:'Least-cost formulation only works when prices are current. A 10% change in maize price can shift the optimal formula significantly.'},
+  {icon:'💧', cat:'water',    tag:'Water',          title:'Water is the First Nutrient',      body:'Animals need 2-5x more water than feed by weight. Restricted water intake reduces feed consumption and growth by up to 30%.'},
+  {icon:'🏚️', cat:'storage',  tag:'Storage',        title:'FIFO — First In, First Out',       body:'Always use older stock first. Feed stored more than 3 months loses vitamins and palatability. Label bags with purchase dates.'},
+  {icon:'🥗', cat:'nutrition', tag:'Nutrition',      title:'Amino Acids Balance Protein',      body:'Crude protein percentage alone is misleading. Lysine and methionine are the first limiting amino acids — deficiency causes poor growth even with adequate CP.'},
+  {icon:'🩺', cat:'health',   tag:'Animal Health',  title:'Biosecurity Saves Money',          body:'Disease costs 5-10x more to treat than prevent. All-in all-out systems, footbaths, and visitor logs cost little but protect your entire flock.'},
+  {icon:'🌦️', cat:'seasons',  tag:'Seasons',        title:'Adjust Rations Seasonally',        body:'Cold stress increases energy requirements by 15-25%. Hot weather reduces appetite. Adjust feed formulas — more energy in cold, better palatability in heat.'},
+  {icon:'📒', cat:'records',  tag:'Records',        title:'Records Are Profit Maps',          body:'Farms that keep detailed feed records are 23% more profitable on average. Track cost per kg gain or per litre of milk to spot problems early.'},
+  {icon:'🐔', cat:'nutrition', tag:'Nutrition',      title:'Layer Calcium Timing Matters',     body:'Laying hens need 3.5-4.5% calcium in feed. Supplement with oyster shell ad libitum — hens self-regulate calcium intake for eggshell formation at night.'},
+  {icon:'🌾', cat:'cost',     tag:'Cost Control',  title:'Bulk Buying Cuts Costs',           body:'Buying maize at harvest (May-August in Kenya) costs 30-40% less than off-season. Proper storage makes bulk buying the most powerful cost reduction tool.'},
+  {icon:'🔁', cat:'health',   tag:'Animal Health',  title:'Rotate Protein Sources',           body:'Using only one protein source risks amino acid imbalances and palatability fatigue. Rotating between soybean, sunflower, and fish meal improves performance.'},
+  {icon:'💊', cat:'nutrition', tag:'Nutrition',      title:'Vitamins Need Protection',         body:'Vitamins degrade rapidly in heat and light. Pre-mixed vitamins lose 20-30% potency in 3 months. Store premix in cool, dark conditions and use within 6 months.'},
+  {icon:'🐄', cat:'nutrition', tag:'Nutrition',      title:'Dairy Cows Need Transition Feeding',body:'The 3 weeks before and after calving are the most critical. Proper transition feeding prevents milk fever, ketosis, and retained placenta — all costly conditions.'},
 ];
 
 // ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────

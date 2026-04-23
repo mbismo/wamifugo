@@ -139,4 +139,103 @@ function calcCost(formula,ingrs){
 }
 
 
-export { lpSolve, solveLeastCostLP, solveLeastCost, calcNutrients, calcCost };
+
+// ── BEST-EFFORT SOLVER ────────────────────────────────────────────────────────
+// When the LP solver can't find a perfect solution, return the best available
+// mix that attempts to meet requirements while minimising cost.
+// Strategy: relax constraints progressively until a solution is found.
+function solveBestEffort(ingrs, reqs) {
+  if (!ingrs || ingrs.length === 0) return null;
+
+  // Try 1: Full LP solve
+  const lp = solveLeastCostLP(ingrs, reqs);
+  if (lp) return { formula: lp, quality: 'optimal', warnings: [] };
+
+  // Try 2: Greedy solve
+  const greedy = solveLeastCost(ingrs, reqs);
+  if (greedy) {
+    const n = calcNutrients(greedy, ingrs);
+    const warnings = assessNutrientGaps(n, reqs);
+    return { formula: greedy, quality: warnings.length === 0 ? 'good' : 'partial', warnings };
+  }
+
+  // Try 3: Relax energy constraint (ME) by 10%
+  if (reqs && reqs.me) {
+    const relaxed = { ...reqs, me: [reqs.me[0] * 0.9, reqs.me[1] * 1.1] };
+    const f = solveLeastCost(ingrs, relaxed);
+    if (f) {
+      const n = calcNutrients(f, ingrs);
+      const warnings = assessNutrientGaps(n, reqs);
+      warnings.unshift({ nutrient: 'ME', severity: 'warning', note: 'Energy constraint relaxed by 10% to find a solution.' });
+      return { formula: f, quality: 'relaxed', warnings };
+    }
+  }
+
+  // Try 4: Relax all constraints by 15%
+  if (reqs) {
+    const relaxed = {};
+    for (const [k, v] of Object.entries(reqs)) {
+      if (Array.isArray(v)) relaxed[k] = [v[0] * 0.85, v[1] * 1.15];
+      else relaxed[k] = v;
+    }
+    const f = solveLeastCost(ingrs, relaxed);
+    if (f) {
+      const n = calcNutrients(f, ingrs);
+      const warnings = assessNutrientGaps(n, reqs);
+      warnings.unshift({ nutrient: 'ALL', severity: 'warning', note: 'Nutritional constraints relaxed by 15%. Add more ingredient options for a better formula.' });
+      return { formula: f, quality: 'relaxed', warnings };
+    }
+  }
+
+  // Try 5: Simple proportional mix of cheapest ingredients
+  const sorted = [...ingrs].sort((a, b) => a.price - b.price);
+  const formula = {};
+  if (sorted.length === 1) {
+    formula[sorted[0].id] = 100;
+  } else if (sorted.length >= 2) {
+    // Give 60% to cheapest energy, 40% to cheapest protein
+    const energy = sorted.find(i => (i.cp || 0) < 25) || sorted[0];
+    const protein = sorted.find(i => (i.cp || 0) >= 25 && i.id !== energy.id) || sorted[1];
+    if (protein) { formula[energy.id] = 60; formula[protein.id] = 40; }
+    else { formula[energy.id] = 100; }
+  }
+
+  if (Object.keys(formula).length > 0) {
+    const n = calcNutrients(formula, ingrs);
+    const warnings = assessNutrientGaps(n, reqs);
+    warnings.unshift({ nutrient: 'ALL', severity: 'danger', note: 'Could not optimise — showing basic mix. Select more ingredients for a proper formula.' });
+    return { formula, quality: 'fallback', warnings };
+  }
+
+  return null;
+}
+
+// Assess which nutrients are off-target
+function assessNutrientGaps(nutrients, reqs) {
+  if (!nutrients || !reqs) return [];
+  const warnings = [];
+  const checks = [
+    ['cp', 'Crude Protein', '%'],
+    ['me', 'Metabolisable Energy', 'kcal/kg'],
+    ['ca', 'Calcium', '%'],
+    ['p', 'Phosphorus', '%'],
+    ['lys', 'Lysine', '%'],
+    ['met', 'Methionine', '%'],
+  ];
+  for (const [key, label, unit] of checks) {
+    const req = reqs[key];
+    const val = nutrients[key];
+    if (!req || val === undefined) continue;
+    const [min, max] = req;
+    if (val < min * 0.9) {
+      warnings.push({ nutrient: label, severity: 'danger', note: `${label}: ${val.toFixed(2)}${unit} — below minimum ${min}${unit}` });
+    } else if (val < min) {
+      warnings.push({ nutrient: label, severity: 'warning', note: `${label}: ${val.toFixed(2)}${unit} — slightly below target ${min}${unit}` });
+    } else if (val > max * 1.1) {
+      warnings.push({ nutrient: label, severity: 'warning', note: `${label}: ${val.toFixed(2)}${unit} — above maximum ${max}${unit}` });
+    }
+  }
+  return warnings;
+}
+
+export { lpSolve, solveLeastCostLP, solveLeastCost, solveBestEffort, assessNutrientGaps, calcNutrients, calcCost };

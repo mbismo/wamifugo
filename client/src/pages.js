@@ -8,7 +8,7 @@ import {
   CATEGORY_META, CATEGORY_ICONS, FEEDING_QTY, TIPS, SPECIES_RECS,
   getAnimalReqs, getAnimalCategories, buildSpeciesList, getStagesForCategory, getReqForStage
 } from "./constants.js";
-import { solveLeastCost, solveLeastCostLP, calcNutrients, calcCost } from "./solver.js";
+import { solveLeastCost, solveLeastCostLP, solveBestEffort, assessNutrientGaps, calcNutrients, calcCost } from "./solver.js";
 
 const h = React.createElement;
 
@@ -462,6 +462,15 @@ function InventoryPage(){
   const [priceMode,setPriceMode]=useState('margin');
   const [marginVal,setMarginVal]=useState('20');
   const [directPrice,setDirectPrice]=useState('');
+  const deleteInventoryItem=(item)=>{
+    if(!window.confirm('Remove '+item.name+' from inventory? All stock records will be archived in the traceability log.'))return;
+    setInventory(inventory.filter(i=>i.id!==item.id));
+    const ledger=db.get('stockLedger',[]);
+    const entry={id:uid(),type:'DELETE_INGREDIENT',date:today(),itemId:item.id,itemName:item.name,
+      qty:item.qty,deletedRecord:JSON.stringify(item),by:user?.name,at:new Date().toISOString()};
+    db.set('stockLedger',[...ledger,entry]);
+    serverPush('stockLedger',[...ledger,entry]);
+  };
   const openPriceEdit=(item)=>{setShowPriceEdit(item);setPriceMode(item.sellPriceDirect?'direct':'margin');setMarginVal(String(item.margin||20));setDirectPrice(String(item.sellPriceDirect||getSellPrice(item)));};
   const savePriceEdit=()=>{
     if(!showPriceEdit)return;
@@ -502,7 +511,9 @@ function InventoryPage(){
         {key:'value',label:'Stock Value',render:r=>fmtKES(r.qty*(r.lastPrice||0))},
         {key:'reorderLevel',label:'Reorder At',render:r=>`${fmt(r.reorderLevel)} kg`},
         {key:'status',label:'Status',render:r=>h(Badge,{color:r.qty<=0?C.danger:r.qty<=r.reorderLevel?C.warning:C.grass},r.qty<=0?'Out of Stock':r.qty<=r.reorderLevel?'Low Stock':'OK')},
-        {key:'price_action',label:'',render:r=>h(Btn,{size:'sm',variant:'secondary',onClick:()=>openPriceEdit(r)},'💲 Price')},
+        {key:'price_action',label:'',render:r=>h('div',{style:{display:'flex',gap:4}},
+          h(Btn,{size:'sm',variant:'secondary',onClick:()=>openPriceEdit(r)},'💲 Price'),
+          user?.role==='admin'&&h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteInventoryItem(r)},'🗑'))},
       ],rows:inventory,emptyMsg:'No inventory items.'})),
     showPriceEdit&&h(Modal,{title:'Set Sell Price — '+showPriceEdit.name,onClose:()=>setShowPriceEdit(null),width:440},
       h('div',{style:{background:C.parchment,borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:C.soil}},
@@ -708,15 +719,18 @@ function FormulatorPage(){
       const ingrs=getActiveWithANF();
       const reqs=getReqForStage(animalReqs,species,stage);
       if(!reqs){setLoading(false);return;}
-      const f=solveLeastCostLP(ingrs,reqs)||solveLeastCost(ingrs,reqs);
-      if(f){
-        const n=calcNutrients(f,ingrs);
-        const c=calcCost(f,ingrs);
-        setFormula(f);setNutrients(n);setCostPKg(c);
-        const {warnings,exclusions}=checkANFWarnings(f,ingrs,species);
-        setAnfWarnings(warnings);setAnfExclusions(exclusions);
+      const result=solveBestEffort(ingrs,reqs);
+      if(result&&result.formula){
+        const n=calcNutrients(result.formula,ingrs);
+        const c=calcCost(result.formula,ingrs);
+        setFormula(result.formula);setNutrients(n);setCostPKg(c);
+        const {warnings,exclusions}=checkANFWarnings(result.formula,ingrs,species);
+        setAnfWarnings([...warnings,...(result.warnings||[]).map(w=>({...w,ingredient:w.nutrient,factor:'Nutrient Gap',note:w.note,severity:w.severity}))]);
+        setAnfExclusions(exclusions);
+        if(result.quality==='fallback')showT('Showing best available mix — add more ingredients for optimal formula.','warn');
+        else if(result.quality==='relaxed')showT('Optimal formula not found — showing best approximation.','warn');
       } else {
-        showT('Could not solve — try enabling more ingredients or relaxing constraints.','error');
+        showT('Could not solve — try selecting more ingredients.','error');
       }
       setLoading(false);
     },400);
@@ -729,12 +743,14 @@ function FormulatorPage(){
     setTimeout(()=>{
       const ingrs=getActiveWithANF();
       const reqs=getReqForStage(animalReqs,species,stage);
-      const f=solveLeastCostLP(ingrs,reqs)||solveLeastCost(ingrs,reqs);
-      if(f){
-        const n=calcNutrients(f,ingrs);const c=calcCost(f,ingrs);
-        setFormula(f);setNutrients(n);setCostPKg(c);
-        const {warnings,exclusions}=checkANFWarnings(f,ingrs,species);
-        setAnfWarnings(warnings);setAnfExclusions(exclusions);
+      const result=solveBestEffort(ingrs,reqs);
+      if(result&&result.formula){
+        const n=calcNutrients(result.formula,ingrs);const c=calcCost(result.formula,ingrs);
+        setFormula(result.formula);setNutrients(n);setCostPKg(c);
+        const {warnings,exclusions}=checkANFWarnings(result.formula,ingrs,species);
+        setAnfWarnings([...warnings,...(result.warnings||[]).map(w=>({...w,ingredient:w.nutrient,factor:'Nutrient Gap',note:w.note,severity:w.severity}))]);
+        setAnfExclusions(exclusions);
+        if(result.quality!=='optimal')showT('Best available formula — add more ingredients for optimal solution.','warn');
       } else showT('Could not solve — try selecting more ingredients.','error');
       setLoading(false);
     },400);
@@ -876,17 +892,47 @@ function FormulatorPage(){
 // ── SALES ─────────────────────────────────────────────────────────────────────
 
 function SalesPage(){
-  const {sales}=useContext(Ctx);
-  const rev=sales.reduce((s,x)=>s+x.total,0),cost=sales.reduce((s,x)=>s+x.cost,0),profit=rev-cost;
+  const {sales,setSales,inventory,setInventory,user}=useContext(Ctx);
+  const rev=sales.reduce((s,x)=>s+(x.total||x.totalRevenue||0),0);
+  const cost=sales.reduce((s,x)=>s+(x.cost||x.totalCost||0),0);
+  const profit=rev-cost;
+  const [toast,setToast]=useState(null);
+  const showT=(msg,type='success')=>{setToast({msg,type});setTimeout(()=>setToast(null),3500);};
+
+  const deleteSale=(sale)=>{
+    if(user?.role!=='admin'){showT('Only admin can delete sales records.','error');return;}
+    if(!window.confirm('Delete this sale record? This cannot be undone.'))return;
+    const next=sales.filter(s=>s.id!==sale.id);
+    setSales(next);
+    // Log to traceability ledger
+    const ledger=db.get('stockLedger',[]);
+    const entry={id:uid(),type:'DELETE_SALE',date:today(),product:sale.product||'',
+      qty:sale.batchKg,total:sale.total||sale.totalRevenue||0,
+      deletedRecord:JSON.stringify(sale),by:user?.name,at:new Date().toISOString()};
+    db.set('stockLedger',[...ledger,entry]);
+    serverPush('stockLedger',[...ledger,entry]);
+    showT('Sale deleted and logged to traceability.');
+  };
+
   return h('div',{style:{padding:'0 26px 26px'}},
+    toast&&h(Toast,{msg:toast.msg,type:toast.type}),
     h(PageHdr,{title:'Sales Records',subtitle:'All confirmed feed sales'}),
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:18}},
       h(StatCard,{label:'Total Sales',value:sales.length,icon:'🛒',color:C.earth}),
       h(StatCard,{label:'Total Revenue',value:fmtKES(rev),icon:'💰',color:C.grass}),
       h(StatCard,{label:'Total Cost',value:fmtKES(cost),icon:'📉',color:C.warning}),
-      h(StatCard,{label:'Total Profit',value:fmtKES(profit),sub:rev?`${((profit/rev)*100).toFixed(1)}% margin`:'',icon:'💹',color:profit>=0?C.grass:C.danger})),
+      h(StatCard,{label:'Total Profit',value:fmtKES(profit),sub:rev?((profit/rev)*100).toFixed(1)+'% margin':'',icon:'💹',color:profit>=0?C.grass:C.danger})),
     h(Card,null,h(CardTitle,null,'All Sales'),
-      h(Tbl,{cols:[{key:'date',label:'Date'},{key:'customer',label:'Customer'},{key:'product',label:'Product'},{key:'batchKg',label:'Batch',render:r=>r.batchKg+' kg'},{key:'cost',label:'Cost',render:r=>fmtKES(r.cost)},{key:'total',label:'Revenue',render:r=>h('span',{style:{fontWeight:700,color:C.grass}},fmtKES(r.total))},{key:'profit',label:'Profit',render:r=>h('span',{style:{color:r.profit>=0?C.grass:C.danger,fontWeight:700}},fmtKES(r.profit))}],rows:sales.slice().reverse(),emptyMsg:'No sales yet. Formulate a feed and send to sell.'})));
+      h(Tbl,{cols:[
+        {key:'date',label:'Date'},
+        {key:'customer',label:'Customer',render:r=>r.customerName||r.customer||'Walk-in'},
+        {key:'product',label:'Product'},
+        {key:'batchKg',label:'Batch',render:r=>r.batchKg+' kg'},
+        {key:'cost',label:'Cost',render:r=>fmtKES(r.cost||r.totalCost||0)},
+        {key:'total',label:'Revenue',render:r=>h('span',{style:{fontWeight:700,color:C.grass}},fmtKES(r.total||r.totalRevenue||0))},
+        {key:'profit',label:'Profit',render:r=>h('span',{style:{color:(r.profit||0)>=0?C.grass:C.danger,fontWeight:700}},fmtKES(r.profit||0))},
+        user?.role==='admin'&&{key:'del',label:'',render:r=>h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteSale(r)},'🗑')},
+      ].filter(Boolean),rows:sales.slice().reverse(),emptyMsg:'No sales yet.'})));
 }
 
 // ── REPORTS ──────────────────────────────────────────────────────────────────
