@@ -1235,187 +1235,176 @@ function NutritionPage(){
 
 function UsersPage({currentUser}){
   const [users,setUsersState]=useState(()=>db.get('users',SEED_USERS));
-  useEffect(()=>{fetch("/api/data/users",{headers:{"X-Sync-Key":import.meta.env?.VITE_SYNC_KEY||"wamifugo2024"}}).then(r=>r.json()).then(d=>{if(d.data&&d.data.length){db.set("users",d.data);setUsersState(d.data);}}).catch(()=>{});},[]);
-  const [showAdd,setShowAdd]=useState(false);
-  const [form,setForm]=useState({name:'',username:'',password:'',role:'staff'});
-  const saveUsers=next=>{setUsersState(next);db.set('users',next);serverPush("users",next);};
-  const addUser=()=>{if(!form.name||!form.username||!form.password)return;saveUsers([...users,{...form,id:uid(),active:true,created:today()}]);setShowAdd(false);setForm({name:'',username:'',password:'',role:'staff'});};
-  return h('div',{style:{padding:'0 26px 26px'}},
-    h(PageHdr,{title:'User Management',subtitle:'Control system access and permissions',action:h(Btn,{onClick:()=>setShowAdd(true)},'+ New User')}),
-    h(Card,null,h(CardTitle,null,'System Users'),
-      h(Tbl,{cols:[
-        {key:'name',label:'Name',render:r=>h('span',{style:{fontWeight:600}},r.name,r.id===currentUser.id?' (You)':'')},
-        {key:'username',label:'Username',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.username)},
-        {key:'role',label:'Role',render:r=>h(Badge,{color:r.role==='admin'?C.savanna:C.grass},r.role)},
-        {key:'active',label:'Status',render:r=>h(Badge,{color:r.active?C.grass:C.danger},r.active?'Active':'Disabled')},
-        {key:'created',label:'Created'},
-        {key:'actions',label:'',render:r=>r.id!==currentUser.id?h('div',{style:{display:'flex',gap:6}},h(Btn,{size:'sm',variant:r.active?'warning':'success',onClick:()=>saveUsers(users.map(u=>u.id===r.id?{...u,active:!u.active}:u))},r.active?'Disable':'Enable'),h(Btn,{size:'sm',variant:'danger',onClick:()=>{if(window.confirm('Delete user?'))saveUsers(users.filter(u=>u.id!==r.id));}},'\uD83D\uDDD1 Delete')):h('span',{style:{fontSize:12,color:C.muted}},'Current user')},
-      ],rows:users})),
-    showAdd&&h(Modal,{title:'Create New User',onClose:()=>setShowAdd(false)},
-      h(Inp,{label:'Full Name',value:form.name,onChange:v=>setForm({...form,name:v}),placeholder:'e.g. Jane Mwangi',required:true}),
-      h(Inp,{label:'Username',value:form.username,onChange:v=>setForm({...form,username:v}),placeholder:'e.g. jane.mwangi',required:true}),
-      h(Inp,{label:'Password',value:form.password,onChange:v=>setForm({...form,password:v}),type:'password',placeholder:'Set a password',required:true}),
-      h(Sel,{label:'Role',value:form.role,onChange:v=>setForm({...form,role:v}),options:[{value:'staff',label:'Staff — limited access'},{value:'admin',label:'Admin — full access'}]}),
-      h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},h(Btn,{onClick:()=>setShowAdd(false),variant:'secondary'},'Cancel'),h(Btn,{onClick:addUser},'Create User'))));
-}
-
-// ── ROOT ──────────────────────────────────────────────────────────────────────
-
-
-
-// ── RESOURCES PAGE ────────────────────────────────────────────────────────────
-function ResourcesPage(){
-  const {ingredients,inventory,sales,purchases,customers,animalReqs}=useContext(Ctx)||{};
   const [toast,setToast]=useState(null);
   const showT=(msg,type='success')=>{setToast({msg,type});setTimeout(()=>setToast(null),3500);};
 
-  // ── CSV HELPERS ──────────────────────────────────────────────────────────────
-  function dlCSV(rows,filename){
-    const csv=rows.map(r=>r.map(c=>{
-      const s=String(c??'').replace(/"/g,'\"');
-      return s.includes(',')||s.includes('\n')?`"${s}"`:s;
-    }).join(',')).join('\n');
-    const a=document.createElement('a');
-    a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-    a.download=filename;a.click();
-  }
+  // Pull latest users from server on mount
+  useEffect(()=>{
+    fetch('/api/data/users',{headers:{'X-Sync-Key':import.meta.env?.VITE_SYNC_KEY||'wamifugo2024'}})
+      .then(r=>r.json()).then(d=>{if(d.data&&d.data.length){db.set('users',d.data);setUsersState(d.data);}}).catch(()=>{});
+  },[]);
 
-  function exportIngredients(){
-    const rows=[['ID','Name','Category','Price (KES/kg)','CP%','ME kcal/kg','Fat%','Fibre%','Ca%','P%','Lys%','Met%','Min Incl%','Max Incl%']];
-    (ingredients||[]).forEach(i=>rows.push([i.id,i.name,i.category,i.price,i.cp||'',i.me||'',i.fat||'',i.fibre||'',i.ca||'',i.p||'',i.lys||'',i.met||'',i.minIncl||0,i.maxIncl||100]));
-    dlCSV(rows,'ingredients.csv');showT('Ingredients exported');
-  }
+  const saveUsers=next=>{setUsersState(next);db.set('users',next);serverPush('users',next);};
 
-  function exportInventory(){
-    const rows=[['ID','Name','Category','Stock (kg)','Buy Price','Sell Price','Margin%','Reorder Level']];
-    (inventory||[]).forEach(i=>rows.push([i.id,i.name,i.category,i.qty,i.lastPrice,i.sellPrice||'',i.margin||'',i.reorderLevel||'']));
-    dlCSV(rows,'inventory.csv');showT('Inventory exported');
-  }
+  // ── Add user state ──────────────────────────────────────────────────────────
+  const [showAdd,setShowAdd]=useState(false);
+  const [form,setForm]=useState({name:'',username:'',password:'',email:'',role:'staff',active:true});
 
-  function exportSales(){
-    const rows=[['ID','Date','Customer','Product','Batch kg','Sell Price/kg','Revenue','Cost','Profit','Discount']];
-    (sales||[]).forEach(s=>rows.push([s.id,s.date,s.customerName,s.product,s.batchKg,s.sellPricePerKg,s.totalRevenue,s.totalCost,s.profit,s.discount||0]));
-    dlCSV(rows,'sales.csv');showT('Sales exported');
-  }
+  // ── Edit user state ─────────────────────────────────────────────────────────
+  const [editUser,setEditUser]=useState(null);
+  const [editForm,setEditForm]=useState({name:'',username:'',email:'',role:'staff',active:true});
 
-  function exportPurchases(){
-    const rows=[['ID','Date','Ingredient','Qty (kg)','Cost/kg','Total','Supplier']];
-    (purchases||[]).forEach(p=>rows.push([p.id,p.date,p.itemName,p.qty,p.costPerKg,p.total,p.supplier||'']));
-    dlCSV(rows,'purchases.csv');showT('Purchases exported');
-  }
+  // ── Password change state ───────────────────────────────────────────────────
+  const [pwdUser,setPwdUser]=useState(null);
+  const [newPwd,setNewPwd]=useState('');
+  const [confirmPwd,setConfirmPwd]=useState('');
+  const [currentPwd,setCurrentPwd]=useState(''); // for own password change
 
-  function exportCustomers(){
-    const rows=[['ID','Name','Phone','Email','Location','Created']];
-    (customers||[]).forEach(c=>rows.push([c.id,c.name,c.phone||'',c.email||'',c.location||'',c.createdAt||'']));
-    dlCSV(rows,'customers.csv');showT('Customers exported');
-  }
+  const addUser=()=>{
+    if(!form.name||!form.username||!form.password)return;
+    if(users.find(u=>u.username===form.username)){showT('Username already exists','error');return;}
+    const next=[...users,{...form,id:uid(),created:today(),active:true}];
+    saveUsers(next);setForm({name:'',username:'',password:'',email:'',role:'staff',active:true});
+    setShowAdd(false);showT('User created!');
+  };
 
-  function exportAnimalReqs(){
-    const rows=[['ID','Category','Stage','CP Min','CP Max','ME Min','ME Max','Fat Min','Fat Max','Fibre Min','Fibre Max','Ca Min','Ca Max','P Min','P Max','Lys Min','Lys Max','Met Min','Met Max']];
-    ((animalReqs||SEED_ANIMAL_REQS)||[]).forEach(a=>rows.push([a.id,a.category,a.stage,...a.cp,...a.me,...a.fat,...a.fibre,...a.ca,...a.p,...a.lys,...a.met]));
-    dlCSV(rows,'animal_requirements.csv');showT('Animal requirements exported');
-  }
+  const openEdit=(u)=>{
+    setEditUser(u);
+    setEditForm({name:u.name,username:u.username,email:u.email||'',role:u.role,active:u.active!==false});
+  };
 
-  // ── IMPORT HELPERS ───────────────────────────────────────────────────────────
-  function parseCSV(text){
-    const lines=text.trim().split('\n');
-    const headers=lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim());
-    return lines.slice(1).filter(l=>l.trim()).map(line=>{
-      const vals=line.split(',').map(v=>v.replace(/^"|"$/g,'').trim());
-      const obj={};headers.forEach((h,i)=>obj[h]=vals[i]||'');
-      return obj;
-    });
-  }
+  const saveEdit=()=>{
+    if(!editForm.name||!editForm.username)return;
+    // Check username unique (excluding self)
+    if(users.find(u=>u.username===editForm.username&&u.id!==editUser.id)){
+      showT('Username already taken','error');return;
+    }
+    const next=users.map(u=>u.id===editUser.id?{...u,...editForm}:u);
+    saveUsers(next);setEditUser(null);showT('Profile updated!');
+  };
 
-  function importIngredients(e){
-    const file=e.target.files[0];if(!file)return;
-    const r=new FileReader();
-    r.onload=ev=>{
-      try{
-        const rows=parseCSV(ev.target.result);
-        if(!rows.length){showT('No data found','error');return;}
-        showT(`Importing ${rows.length} ingredients — go to Ingredients page to apply`,'info');
-        // Store in localStorage for manual review
-        db.set('pendingIngredientImport',rows);
-        showT(`${rows.length} ingredients ready to import. Go to Admin → Ingredients to review.`);
-      }catch(err){showT('Error reading CSV: '+err.message,'error');}
-    };
-    r.readAsText(file);e.target.value='';
-  }
+  const openPwd=(u)=>{setPwdUser(u);setNewPwd('');setConfirmPwd('');setCurrentPwd('');};
 
-  // ── PRINT PDF ────────────────────────────────────────────────────────────────
-  function printReport(title,rows,headers){
-    const w=window.open('','_blank');
-    const table=headers.map((h,i)=>`<th style="background:#3d2b1f;color:white;padding:8px 10px;text-align:left;font-size:11px">${h}</th>`).join('');
-    const body=rows.map((row,ri)=>
-      `<tr style="background:${ri%2?'#faf6ee':'white'}">${row.map(c=>`<td style="padding:6px 10px;font-size:11px;border-bottom:1px solid #e8e0d4">${c??''}</td>`).join('')}</tr>`
-    ).join('');
-    w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
-    <style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#3d2b1f;font-family:Georgia}table{border-collapse:collapse;width:100%}@media print{button{display:none}}</style>
-    </head><body>
-    <h1>🌾 ${title}</h1>
-    <p style="color:#7a6a55;font-size:12px">Generated: ${new Date().toLocaleString('en-KE')} | Wa-Mifugo Feeds Management System</p>
-    <table><thead><tr>${table}</tr></thead><tbody>${body}</tbody></table>
-    <br><button onclick="window.print()" style="background:#3d2b1f;color:white;padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨 Print / Save as PDF</button>
-    </body></html>`);
-    w.document.close();
-  }
+  const savePwd=()=>{
+    if(newPwd.length<6){showT('Password must be at least 6 characters','error');return;}
+    if(newPwd!==confirmPwd){showT('Passwords do not match','error');return;}
+    // If changing own password and not admin, verify current password
+    const isOwnAccount=pwdUser.id===currentUser?.id;
+    const isAdmin=currentUser?.role==='admin';
+    if(isOwnAccount&&!isAdmin){
+      if(!currentPwd){showT('Enter your current password','error');return;}
+      const self=users.find(u=>u.id===currentUser.id);
+      if(self?.password!==currentPwd){showT('Current password is incorrect','error');return;}
+    }
+    const next=users.map(u=>u.id===pwdUser.id?{...u,password:newPwd}:u);
+    saveUsers(next);setPwdUser(null);showT('Password changed successfully!');
+  };
 
-  const ExportCard=({icon,title,desc,onExport,onPrint})=>
-    h(Card,{style:{marginBottom:0}},
-      h('div',{style:{padding:'14px 16px'}},
-        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:8}},
-          h('span',{style:{fontSize:24}},icon),
-          h('div',null,
-            h('div',{style:{fontWeight:700,color:C.earth,fontSize:14}},title),
-            h('div',{style:{fontSize:12,color:C.muted}},desc))),
-        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
-          h(Btn,{onClick:onExport,size:'sm',variant:'secondary'},'⬇ Export CSV'),
-          onPrint&&h(Btn,{onClick:onPrint,size:'sm',variant:'secondary'},'🖨 Print PDF'))));
+  const toggleActive=(u)=>{
+    if(u.id===currentUser?.id){showT("You can't deactivate your own account",'error');return;}
+    const next=users.map(x=>x.id===u.id?{...x,active:!x.active}:x);
+    saveUsers(next);showT(u.active?'User deactivated':'User activated');
+  };
+
+  const deleteUser=(u)=>{
+    if(u.id===currentUser?.id){showT("You can't delete your own account",'error');return;}
+    if(users.filter(x=>x.role==='admin'&&x.active).length<=1&&u.role==='admin'){
+      showT('Cannot delete the last admin account','error');return;
+    }
+    if(!window.confirm('Delete user '+u.name+'? This cannot be undone.'))return;
+    const next=users.filter(x=>x.id!==u.id);
+    saveUsers(next);showT('User deleted');
+  };
+
+  const roleColor={admin:C.earth,staff:C.grass};
 
   return h('div',{style:{padding:'0 26px 26px'}},
     toast&&h(Toast,{msg:toast.msg,type:toast.type}),
-    h(PageHdr,{title:'Resources',subtitle:'Export data to Excel/CSV, print PDF reports, or import data'}),
+    h(PageHdr,{title:'User Management',subtitle:'Manage staff accounts and access levels',
+      action:h(Btn,{onClick:()=>setShowAdd(true),variant:'success'},'+ New User')}),
 
-    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:14,marginBottom:20}},
-      h(ExportCard,{icon:'🧂',title:'Ingredients',desc:'Nutrient profiles, prices, inclusion limits',
-        onExport:exportIngredients,
-        onPrint:()=>printReport('Ingredient Register',
-          (ingredients||[]).map(i=>[i.name,i.category,`KES ${i.price}`,i.cp,i.me,i.ca,i.p]),
-          ['Ingredient','Category','Price/kg','CP%','ME','Ca%','P%'])}),
-      h(ExportCard,{icon:'📦',title:'Inventory',desc:'Current stock levels and valuations',
-        onExport:exportInventory,
-        onPrint:()=>printReport('Inventory Report',
-          (inventory||[]).map(i=>[i.name,i.qty+' kg',`KES ${i.lastPrice}`,`KES ${i.sellPrice||''}`,`KES ${((i.qty||0)*(i.lastPrice||0)).toLocaleString()}`]),
-          ['Ingredient','Stock','Buy Price','Sell Price','Stock Value'])}),
-      h(ExportCard,{icon:'💰',title:'Sales',desc:'All sales records with profit analysis',
-        onExport:exportSales,
-        onPrint:()=>printReport('Sales Report',
-          (sales||[]).map(s=>[s.date,s.customerName,s.product,s.batchKg+'kg',`KES ${(s.totalRevenue||0).toLocaleString()}`,`KES ${(s.profit||0).toLocaleString()}`]),
-          ['Date','Customer','Product','Batch','Revenue','Profit'])}),
-      h(ExportCard,{icon:'🛒',title:'Purchases',desc:'All stock purchase records',
-        onExport:exportPurchases,
-        onPrint:()=>printReport('Purchase Records',
-          (purchases||[]).map(p=>[p.date,p.itemName,p.qty+'kg',`KES ${p.costPerKg}`,`KES ${(p.total||0).toLocaleString()}`,p.supplier||'']),
-          ['Date','Ingredient','Qty','Cost/kg','Total','Supplier'])}),
-      h(ExportCard,{icon:'👥',title:'Customers',desc:'Customer directory',
-        onExport:exportCustomers,
-        onPrint:()=>printReport('Customer Directory',
-          (customers||[]).map(c=>[c.name,c.phone||'',c.email||'',c.location||'']),
-          ['Name','Phone','Email','Location'])}),
-      h(ExportCard,{icon:'🔬',title:'Animal Requirements',desc:'Nutritional targets by species and stage',
-        onExport:exportAnimalReqs,
-        onPrint:()=>printReport('Animal Nutritional Requirements',
-          ((animalReqs||SEED_ANIMAL_REQS)||[]).map(a=>[a.category,a.stage,a.cp.join('-'),a.me.join('-'),a.ca.join('-'),a.p.join('-')]),
-          ['Category','Stage','CP%','ME kcal/kg','Ca%','P%'])})),
+    // ── Stats ──
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:18}},
+      h(StatCard,{label:'Total Users',value:users.length,color:C.earth,icon:'👥'}),
+      h(StatCard,{label:'Active',value:users.filter(u=>u.active!==false).length,color:C.grass,icon:'✅'}),
+      h(StatCard,{label:'Admins',value:users.filter(u=>u.role==='admin').length,color:C.savanna,icon:'🔐'})),
 
-    h(Card,null,
-      h('div',{style:{padding:'14px 16px'}},
-        h('div',{style:{fontWeight:700,color:C.earth,fontSize:14,marginBottom:4}},'📤 Import Ingredients from CSV'),
-        h('div',{style:{fontSize:12,color:C.muted,marginBottom:12}},'Upload a CSV exported from this system or from the Excel reference file. Headers must match exactly.'),
-        h('label',{style:{display:'inline-block',padding:'8px 16px',background:C.earth,color:'white',borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:600}},
-          '📂 Choose CSV File',
-          h('input',{type:'file',accept:'.csv',onChange:importIngredients,style:{display:'none'}})))));
+    // ── Users table ──
+    h(Card,null,h(CardTitle,null,'All Users'),
+      h('div',{style:{overflowX:'auto'}},
+        h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:13}},
+          h('thead',null,h('tr',null,
+            ['Name','Username','Email','Role','Status','Actions'].map((col,i)=>
+              h('th',{key:i,style:{padding:'9px 12px',background:C.earth,color:'white',textAlign:'left',fontSize:11,textTransform:'uppercase',letterSpacing:1}},col)))),
+          h('tbody',null,users.map((u,i)=>
+            h('tr',{key:u.id,style:{borderBottom:'1px solid '+C.border,background:i%2===0?C.cream:'white'}},
+              h('td',{style:{padding:'10px 12px'}},
+                h('div',{style:{fontWeight:700,color:C.earth}},u.name),
+                u.created&&h('div',{style:{fontSize:10,color:C.muted}},u.created)),
+              h('td',{style:{padding:'10px 12px',fontFamily:"'DM Mono',monospace",fontSize:12}},u.username),
+              h('td',{style:{padding:'10px 12px',fontSize:12,color:C.muted}},u.email||'—'),
+              h('td',{style:{padding:'10px 12px'}},
+                h(Badge,{color:roleColor[u.role]||C.muted},u.role)),
+              h('td',{style:{padding:'10px 12px'}},
+                h(Badge,{color:u.active!==false?C.grass:C.danger},u.active!==false?'Active':'Inactive')),
+              h('td',{style:{padding:'8px 12px'}},
+                h('div',{style:{display:'flex',gap:5,flexWrap:'wrap'}},
+                  h(Btn,{size:'sm',variant:'secondary',onClick:()=>openEdit(u)},'✏ Edit'),
+                  h(Btn,{size:'sm',variant:'secondary',onClick:()=>openPwd(u)},'🔑 Password'),
+                  currentUser?.role==='admin'&&u.id!==currentUser?.id&&
+                    h(Btn,{size:'sm',variant:u.active!==false?'secondary':'success',onClick:()=>toggleActive(u)},
+                      u.active!==false?'Deactivate':'Activate'),
+                  currentUser?.role==='admin'&&u.id!==currentUser?.id&&
+                    h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteUser(u)},'🗑')))))))),
+
+    // ── Add User Modal ──
+    showAdd&&h(Modal,{title:'Add New User',onClose:()=>setShowAdd(false),width:480},
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
+        h('div',null,Inp({label:'Full Name *',value:form.name,onChange:v=>setForm({...form,name:v}),placeholder:'e.g. Jane Wanjiku'})),
+        h('div',null,Inp({label:'Username *',value:form.username,onChange:v=>setForm({...form,username:v.toLowerCase().replace(/[\s]/g,'')}),placeholder:'e.g. jane.w'})),
+        h('div',null,Inp({label:'Email',value:form.email,onChange:v=>setForm({...form,email:v}),type:'email',placeholder:'jane@farm.co.ke'})),
+        h('div',null,Inp({label:'Password *',value:form.password,onChange:v=>setForm({...form,password:v}),type:'password',placeholder:'Min 6 characters'})),
+        h('div',{style:{gridColumn:'1/-1'}},
+          h(Sel,{label:'Role',value:form.role,onChange:v=>setForm({...form,role:v}),
+            options:[{value:'staff',label:'Staff — limited access'},{value:'admin',label:'Admin — full access'}]}))),
+      h('div',{style:{background:C.parchment,borderRadius:8,padding:'10px 14px',marginTop:12,fontSize:12,color:C.muted}},
+        h('strong',null,'Staff'),' can record sales, view inventory and customers.',h('br',null),
+        h('strong',null,'Admin'),' can additionally manage users, delete records, edit prices and access all settings.'),
+      h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
+        h(Btn,{onClick:()=>setShowAdd(false),variant:'secondary'},'Cancel'),
+        h(Btn,{onClick:addUser,variant:'success',disabled:!form.name||!form.username||!form.password},'Create User'))),
+
+    // ── Edit Profile Modal ──
+    editUser&&h(Modal,{title:'Edit Profile — '+editUser.name,onClose:()=>setEditUser(null),width:480},
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
+        h('div',null,Inp({label:'Full Name *',value:editForm.name,onChange:v=>setEditForm({...editForm,name:v})})),
+        h('div',null,Inp({label:'Username *',value:editForm.username,onChange:v=>setEditForm({...editForm,username:v.toLowerCase().replace(/[\s]/g,'')})})),
+        h('div',{style:{gridColumn:'1/-1'}},Inp({label:'Email',value:editForm.email,onChange:v=>setEditForm({...editForm,email:v}),type:'email'})),
+        currentUser?.role==='admin'&&h('div',{style:{gridColumn:'1/-1'}},
+          h(Sel,{label:'Role',value:editForm.role,onChange:v=>setEditForm({...editForm,role:v}),
+            options:[{value:'staff',label:'Staff'},{value:'admin',label:'Admin'}]}))),
+      h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
+        h(Btn,{onClick:()=>setEditUser(null),variant:'secondary'},'Cancel'),
+        h(Btn,{onClick:saveEdit,variant:'success',disabled:!editForm.name||!editForm.username},'Save Changes'))),
+
+    // ── Change Password Modal ──
+    pwdUser&&h(Modal,{title:'Change Password — '+pwdUser.name,onClose:()=>setPwdUser(null),width:420},
+      h('div',{style:{background:C.parchment,borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:C.soil}},
+        pwdUser.id===currentUser?.id&&currentUser?.role!=='admin'
+          ?'Enter your current password to set a new one.'
+          :'As admin, you can set a new password without the current one.'),
+      pwdUser.id===currentUser?.id&&currentUser?.role!=='admin'&&
+        Inp({label:'Current Password',value:currentPwd,onChange:setCurrentPwd,type:'password',placeholder:'Your current password'}),
+      Inp({label:'New Password',value:newPwd,onChange:setNewPwd,type:'password',placeholder:'Minimum 6 characters'}),
+      h('div',{style:{marginBottom:14}},
+        h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:0.5,color:C.muted,marginBottom:5}},'Confirm New Password'),
+        h('input',{type:'password',value:confirmPwd,onChange:e=>setConfirmPwd(e.target.value),placeholder:'Repeat new password',
+          style:{width:'100%',padding:'9px 12px',border:'1px solid '+(confirmPwd&&confirmPwd!==newPwd?C.danger:C.border),
+            borderRadius:8,fontSize:14,background:C.cream}}),
+        confirmPwd&&confirmPwd!==newPwd&&h('div',{style:{fontSize:11,color:C.danger,marginTop:4}},'Passwords do not match')),
+      h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
+        h(Btn,{onClick:()=>setPwdUser(null),variant:'secondary'},'Cancel'),
+        h(Btn,{onClick:savePwd,variant:'success',disabled:newPwd.length<6||newPwd!==confirmPwd},'Change Password'))));
 }
 
 function TraceabilityPage(){

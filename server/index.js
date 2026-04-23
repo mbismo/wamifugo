@@ -122,8 +122,6 @@ app.post('/api/auth/reset/password', async (req, res) => {
 
 
 // ── SEED DEMO DATA ────────────────────────────────────────────────────────────
-// POST /api/seed — loads Excel-sourced demo data into all collections
-// Protected by sync key. Only use once to populate a fresh installation.
 const SEED_DATA = {
   "ingredients": [
     {
@@ -1716,23 +1714,40 @@ const SEED_DATA = {
     }
   ],
   "stockLedger": [],
-  "savedFormulas": []
+  "savedFormulas": [],
+  "users": [
+    {
+      "id": "u1",
+      "name": "Admin",
+      "username": "admin",
+      "password": "admin123",
+      "email": "admin@wamifugo.co.ke",
+      "role": "admin",
+      "active": true,
+      "created": "2024-01-01"
+    }
+  ]
 };
 
-app.post('/api/seed', checkKey, (req, res) => {
-  try {
-    let count = 0;
+// Auto-seed: if users collection is empty on startup, load demo data
+function autoSeed() {
+  const { data: users } = db.getCollection('users');
+  if (!users || users.length === 0) {
+    console.log('📦 Auto-seeding demo data...');
     for (const [collection, data] of Object.entries(SEED_DATA)) {
       db.setCollection(collection, data);
-      count++;
     }
-    // Also seed default admin user
-    const defaultUsers = [{
-      id: 'u1', name: 'Admin', username: 'admin', password: 'admin123',
-      email: 'admin@wamifugo.co.ke', role: 'admin', active: true, created: '2024-01-01'
-    }];
-    db.setCollection('users', defaultUsers);
-    res.json({ ok: true, message: `Seeded ${count} collections with demo data` });
+    console.log('✅ Demo data loaded — login: admin / admin123');
+  }
+}
+
+// POST /api/seed — manual seed (admin use)
+app.post('/api/seed', checkKey, (req, res) => {
+  try {
+    for (const [collection, data] of Object.entries(SEED_DATA)) {
+      db.setCollection(collection, data);
+    }
+    res.json({ ok: true, message: 'Seeded ' + Object.keys(SEED_DATA).length + ' collections with demo data' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1762,6 +1777,7 @@ app.get('*', (req, res) => {
 // ── START ─────────────────────────────────────────────────────────────────────
 function start() {
   db.initDB();
+  autoSeed();
   app.listen(PORT, () => {
     console.log(`🌾 Wa-Mifugo server running on port ${PORT}`);
     console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
