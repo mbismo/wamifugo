@@ -9,7 +9,7 @@ import {
 } from "./constants.js";
 import { solveLeastCost, solveLeastCostLP, calcNutrients, calcCost } from "./solver.js";
 import { C, uid, today, dateRange, fmt, fmtKES } from "./utils.js";
-import Pages from "./pages.jsx";
+import Pages from "./pages.js";
 
 // Context
 export const Ctx = createContext(null);
