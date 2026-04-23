@@ -238,9 +238,9 @@ function CardTitle({children,action}){
 
 function Inp({label,value,onChange,type='text',placeholder='',required=false,style={}}){
   return h('div',{style:{marginBottom:12}},
-    label&&h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:0.5,color:C.muted,marginBottom:4}},label,required&&h('span',{style:{color:C.danger}},(' *')),
+    label&&h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:0.5,color:C.muted,marginBottom:4}},label,required&&h('span',{style:{color:C.danger}},('*'))),
     h('input',{type,value,onChange:e=>onChange(e.target.value),placeholder,
-      style:{width:'100%',padding:'8px 11px',border:`1px solid ${C.border}`,borderRadius:8,fontSize:13,color:C.ink,background:C.cream,outline:'none',...style}})
+      style:{width:'100%',padding:'8px 11px',border:'1px solid '+C.border,borderRadius:8,fontSize:13,color:C.ink,background:C.cream,outline:'none',...style}})
   );
 }
 
@@ -1721,18 +1721,18 @@ function ResourcesPage(){
 
   function printReport(title,rows,headers){
     const w=window.open('','_blank');
-    const th=headers.map(h=>`<th style="background:#3d2b1f;color:white;padding:8px 10px;text-align:left;font-size:11px">${h}</th>`).join('');
+    const th=headers.map(h=>'<th style="background:#3d2b1f;color:white;padding:8px 10px;text-align:left;font-size:11px">'+(h)+'</th>').join('');
     const tbody=rows.map((row,i)=>
-      `<tr style="background:${i%2?'#faf6ee':'white'}">${row.map(c=>`<td style="padding:6px 10px;font-size:11px;border-bottom:1px solid #e8e0d4">${c??''}</td>`).join('')}</tr>`
+      '<tr style="background:'+(i%2?'#faf6ee':'white')+'">${row.map(c=>'<td style="padding:6px 10px;font-size:11px;border-bottom:1px solid #e8e0d4">${c??''}</td>').join('')}</tr>'
     ).join('');
-    w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+    w.document.write('<!DOCTYPE html><html><head><title>'+(title)+'</title>
     <style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#3d2b1f}table{border-collapse:collapse;width:100%}@media print{button{display:none}}</style>
     </head><body>
-    <h1>${title}</h1>
-    <p style="color:#7a6a55;font-size:12px">Generated: ${new Date().toLocaleString('en-KE')} | Wa-Mifugo Feeds</p>
-    <table><thead><tr>${th}</tr></thead><tbody>${tbody}</tbody></table>
+    <h1>'+(title)+'</h1>
+    <p style="color:#7a6a55;font-size:12px">Generated: '+(new Date().toLocaleString('en-KE'))+' | Wa-Mifugo Feeds</p>
+    <table><thead><tr>'+(th)+'</tr></thead><tbody>'+(tbody)+'</tbody></table>
     <br><button onclick="window.print()" style="background:#3d2b1f;color:white;padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px"> Print / Save PDF</button>
-    </body></html>`);
+    </body></html>');
     w.document.close();
   }
 
