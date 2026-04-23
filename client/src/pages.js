@@ -12,7 +12,7 @@ import { solveLeastCost, solveLeastCostLP, solveBestEffort, assessNutrientGaps, 
 
 const h = React.createElement;
 
-// ── ANTI-NUTRITIVE FACTORS DATABASE ─────────────────────────────────────────
+//  ANTI-NUTRITIVE FACTORS DATABASE 
 // Sources: ILRI Feed Composition Tables, NRC (2012), FAO Animal Feed Resources
 // Each factor defines: which ingredient, which factor, safe limit per species,
 // and what harm it causes above that limit.
@@ -213,7 +213,7 @@ async function serverPush(col, data) {
   } catch (e) { console.warn('Push failed:', e.message); }
 }
 
-// ── UI ATOMS ─────────────────────────────────────────────────────────────────
+//  UI ATOMS 
 function Btn({children,onClick,variant='primary',size='md',disabled=false,style={}}){
   const v={primary:{bg:C.earth,c:C.cream,b:C.earth},secondary:{bg:'white',c:C.soil,b:C.border},
     success:{bg:C.grass,c:'white',b:C.grass},danger:{bg:C.danger,c:'white',b:C.danger},
@@ -267,7 +267,7 @@ function Modal({title,children,onClose,width=560}){
     h('div',{style:{background:'white',borderRadius:16,width:'100%',maxWidth:width,maxHeight:'90vh',overflow:'auto',boxShadow:'0 24px 80px rgba(0,0,0,0.3)'}},
       h('div',{style:{background:C.earth,padding:'15px 19px',display:'flex',alignItems:'center',justifyContent:'space-between'}},
         h('span',{style:{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:700,color:'white'}},title),
-        h('button',{onClick:onClose,style:{background:'none',border:'none',color:'rgba(255,255,255,0.7)',fontSize:20,cursor:'pointer'}},'✕')),
+        h('button',{onClick:onClose,style:{background:'none',border:'none',color:'rgba(255,255,255,0.7)',fontSize:20,cursor:'pointer'}},'')),
       h('div',{style:{padding:19}},children)));
 }
 
@@ -296,19 +296,19 @@ function Toast({msg,type}){
 
 
 const NAV=[
-  {key:'dashboard',icon:'📊',label:'Dashboard'},
-  {key:'formulator',icon:'🧪',label:'Feed Formulator'},
-  {key:'inventory',icon:'📦',label:'Inventory'},
-  {key:'customers',icon:'👥',label:'Customers'},
-  {key:'sales',icon:'💰',label:'Sales'},
-  {key:'reports',icon:'📈',label:'Reports'},
-  {key:'feeding_guide',icon:'🌾',label:'Feeding Guide'},
-  {key:'education',icon:'📺',label:'Education Screen'},
-  {key:'resources',icon:'📁',label:'Resources'},
-  {key:'traceability',icon:'🔍',label:'Traceability Log',admin:true},
-  {key:'ingredients',icon:'🧂',label:'Ingredients',admin:true},
-  {key:'nutrition',icon:'🔬',label:'Nutritional Reqs',admin:true},
-  {key:'users',icon:'🔐',label:'Users',admin:true},
+  {key:'dashboard',icon:'',label:'Dashboard'},
+  {key:'formulator',icon:'',label:'Feed Formulator'},
+  {key:'inventory',icon:'',label:'Inventory'},
+  {key:'customers',icon:'',label:'Customers'},
+  {key:'sales',icon:'',label:'Sales'},
+  {key:'reports',icon:'',label:'Reports'},
+  {key:'feeding_guide',icon:'',label:'Feeding Guide'},
+  {key:'education',icon:'',label:'Education Screen'},
+  {key:'resources',icon:'',label:'Resources'},
+  {key:'traceability',icon:'',label:'Traceability Log',admin:true},
+  {key:'ingredients',icon:'',label:'Ingredients',admin:true},
+  {key:'nutrition',icon:'',label:'Nutritional Reqs',admin:true},
+  {key:'users',icon:'',label:'Users',admin:true},
 ];
 
 
@@ -342,7 +342,7 @@ function LoginPage({onLogin}){
   const resetPassword=async()=>{if(!(newPass.length >= 6)){setE('Min 6 characters.');return;}if(newPass!==newPass2){setE('Passwords do not match.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:email.trim(),code:code.trim(),password:newPass})});const d=await r.json();setLoading(false);if(d.ok){const us=db.get('users',SEED_USERS);db.set('users',us.map(u=>u.email&&u.email.toLowerCase()===email.trim().toLowerCase()?{...u,password:newPass}:u));setM('Password updated! You can now sign in.');setView('login');setCode('');setNewPass('');setNewPass2('');}else setE(d.error||'Could not update password.');}catch{setLoading(false);setE('Could not reach server.');}};
   const card=h('div',{style:{background:'white',borderRadius:20,padding:'40px 36px',width:'100%',maxWidth:400,boxShadow:'0 32px 80px rgba(0,0,0,0.4)'}},
     h('div',{style:{textAlign:'center',marginBottom:28}},
-      h('div',{style:{fontSize:46,marginBottom:8}},'🌾'),
+      h('div',{style:{fontSize:46,marginBottom:8}},''),
       h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:28,fontWeight:900,color:C.earth,lineHeight:1.1}},'Wa-Mifugo'),
       h('div',{style:{fontFamily:"'DM Mono',monospace",fontSize:10,color:C.muted,letterSpacing:2,textTransform:'uppercase',marginTop:4}},'Feeds Management System'),
       view!=='login'&&h('div',{style:{marginTop:10,fontSize:13,color:C.soil,fontWeight:600}},view==='forgot'?'Reset Password':view==='verify'?'Enter Code':'New Password')),
@@ -351,19 +351,19 @@ function LoginPage({onLogin}){
     view==='login'&&h('div',null,
       Inp({label:'Username',value:uname,onChange:setUname,placeholder:'Enter username'}),
       Inp({label:'Password',value:pass,onChange:v=>{setPass(v);setErr('');},type:'password',placeholder:'Enter password'}),
-      h(Btn,{onClick:login,size:'lg',style:{width:'100%',marginTop:10}},'Sign In →'),
-      h('div',{style:{textAlign:'center',marginTop:14}},h('span',{style:{fontSize:13,color:C.muted,cursor:'pointer',textDecoration:'underline'},onClick:()=>{setView('forgot');setErr('');setMsg('');}},'→ Forgot password?'))),
+      h(Btn,{onClick:login,size:'lg',style:{width:'100%',marginTop:10}},'Sign In '),
+      h('div',{style:{textAlign:'center',marginTop:14}},h('span',{style:{fontSize:13,color:C.muted,cursor:'pointer',textDecoration:'underline'},onClick:()=>{setView('forgot');setErr('');setMsg('');}},' Forgot password?'))),
     view==='forgot'&&h('div',null,
       Inp({label:'Registered Email',value:email,onChange:setEmail,type:'email',placeholder:'e.g. jane@example.com'}),
       h(Btn,{onClick:requestCode,size:'lg',style:{width:'100%',marginTop:10},disabled:loading},loading?'Sending...':'Send Reset Code'),
-      h('div',{style:{textAlign:'center',marginTop:12}},h('span',{style:{fontSize:13,color:C.muted,cursor:'pointer',textDecoration:'underline'},onClick:()=>{setView('login');setErr('');setMsg('');}},'← Back to sign in'))),
+      h('div',{style:{textAlign:'center',marginTop:12}},h('span',{style:{fontSize:13,color:C.muted,cursor:'pointer',textDecoration:'underline'},onClick:()=>{setView('login');setErr('');setMsg('');}},' Back to sign in'))),
     view==='verify'&&h('div',null,
       h('p',{style:{fontSize:13,color:C.muted,marginBottom:12}},'Code sent to ',h('strong',null,email),'. Expires in 15 min.'),
       h('div',{style:{marginBottom:12}},
         h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:5}},'6-Digit Code'),
         h('input',{value:code,onChange:e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6)),placeholder:'000000',maxLength:6,style:{width:'100%',padding:'12px',border:'2px solid '+C.border,borderRadius:10,fontSize:28,fontFamily:"'DM Mono',monospace",fontWeight:700,letterSpacing:12,textAlign:'center',background:C.cream}})),
       h(Btn,{onClick:verifyCode,size:'lg',style:{width:'100%'},disabled:loading||code.length!==6},loading?'Verifying...':'Verify Code'),
-      h('div',{style:{textAlign:'center',marginTop:12}},h('span',{style:{fontSize:13,color:C.muted,cursor:'pointer',textDecoration:'underline'},onClick:()=>{setView('forgot');setCode('');setErr('');setMsg('');}},'← Resend code'))),
+      h('div',{style:{textAlign:'center',marginTop:12}},h('span',{style:{fontSize:13,color:C.muted,cursor:'pointer',textDecoration:'underline'},onClick:()=>{setView('forgot');setCode('');setErr('');setMsg('');}},' Resend code'))),
     view==='newpass'&&h('div',null,
       h('div',{style:{marginBottom:10}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},'New Password'),h('input',{type:'password',value:newPass,onChange:e=>setNewPass(e.target.value),placeholder:'Min 6 characters',style:{width:'100%',padding:'9px 12px',border:'1px solid '+C.border,borderRadius:8,fontSize:14,background:C.cream}})),
       h('div',{style:{marginBottom:12}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},'Confirm Password'),h('input',{type:'password',value:newPass2,onChange:e=>setNewPass2(e.target.value),placeholder:'Repeat new password',style:{width:'100%',padding:'9px 12px',border:'1px solid '+(newPass2&&newPass2!==newPass?C.danger:C.border),borderRadius:8,fontSize:14,background:C.cream}})),
@@ -371,7 +371,7 @@ function LoginPage({onLogin}){
   return h('div',{style:{minHeight:'100vh',background:C.earth,display:'flex',alignItems:'center',justifyContent:'center',padding:16}},card);
 }
 
-// ── SIDEBAR ──────────────────────────────────────────────────────────────────
+//  SIDEBAR 
 function Sidebar({page,setPage,user,onLogout,isOpen=false,onClose=()=>{}}){
   return h('div',{className:'wm-sidebar'+(isOpen?' open':''),style:{width:215,background:C.earth,minHeight:'100vh',display:'flex',flexDirection:'column',flexShrink:0,position:'relative',zIndex:1000,transition:'left 0.25s ease'}},
     h('div',{style:{padding:'18px 15px 14px',borderBottom:'1px solid rgba(255,255,255,0.1)'}},
@@ -390,10 +390,10 @@ function Sidebar({page,setPage,user,onLogout,isOpen=false,onClose=()=>{}}){
       h('div',{style:{fontSize:12,color:'rgba(255,255,255,0.5)',marginBottom:3}},'Signed in as'),
       h('div',{style:{fontSize:13,color:'white',fontWeight:600}},user.name),
       h('div',{style:{fontSize:10,color:C.harvest,textTransform:'uppercase',letterSpacing:1,fontFamily:"'DM Mono',monospace"}},user.role),
-      h('button',{onClick:onLogout,style:{marginTop:9,fontSize:12,color:'rgba(255,255,255,0.45)',background:'none',border:'none',cursor:'pointer',padding:0}},'Sign out →')));
+      h('button',{onClick:onLogout,style:{marginTop:9,fontSize:12,color:'rgba(255,255,255,0.45)',background:'none',border:'none',cursor:'pointer',padding:0}},'Sign out ')));
 }
 
-// ── DASHBOARD ────────────────────────────────────────────────────────────────
+//  DASHBOARD 
 
 function DashboardPage(){
   const {sales,inventory}=useContext(Ctx);
@@ -414,10 +414,10 @@ function DashboardPage(){
   return h('div',{style:{padding:'0 26px 26px'}},
     h(PageHdr,{title:'Dashboard',subtitle:`Overview for ${new Date().toLocaleDateString('en-KE',{weekday:'long',day:'numeric',month:'long'})}`}),
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:13,marginBottom:18}},
-      h(StatCard,{label:"Today's Sales",value:fmtKES(todaySales.reduce((s,x)=>s+x.total,0)),sub:`${todaySales.length} orders`,color:C.grass,icon:'💰'}),
-      h(StatCard,{label:'Monthly Revenue',value:fmtKES(rev),sub:'Last 30 days',color:C.savanna,icon:'📈'}),
-      h(StatCard,{label:'Monthly Profit',value:fmtKES(profit),sub:`${rev?((profit/rev)*100).toFixed(1):0}% margin`,color:profit>=0?C.grass:C.danger,icon:'💹'}),
-      h(StatCard,{label:'Low Stock Alerts',value:lowStock.length,sub:'items need reorder',color:lowStock.length>0?C.danger:C.grass,icon:'⚠️'})),
+      h(StatCard,{label:"Today's Sales",value:fmtKES(todaySales.reduce((s,x)=>s+x.total,0)),sub:`${todaySales.length} orders`,color:C.grass,icon:''}),
+      h(StatCard,{label:'Monthly Revenue',value:fmtKES(rev),sub:'Last 30 days',color:C.savanna,icon:''}),
+      h(StatCard,{label:'Monthly Profit',value:fmtKES(profit),sub:`${rev?((profit/rev)*100).toFixed(1):0}% margin`,color:profit>=0?C.grass:C.danger,icon:''}),
+      h(StatCard,{label:'Low Stock Alerts',value:lowStock.length,sub:'items need reorder',color:lowStock.length>0?C.danger:C.grass,icon:'!'})),
     h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr',gap:15,marginBottom:15}},
       h(Card,null,
         h(CardTitle,null,'Revenue  -  Last 7 Days'),
@@ -443,17 +443,17 @@ function DashboardPage(){
       h(Card,null,h(CardTitle,null,'Recent Sales'),
         h(Tbl,{cols:[{key:'date',label:'Date'},{key:'customer',label:'Customer'},{key:'product',label:'Product'},{key:'total',label:'Amount',render:r=>fmtKES(r.total)}],rows:sales.slice(-5).reverse(),emptyMsg:'No sales yet'})),
       h(Card,null,h(CardTitle,null,'Low Stock Alerts'),
-        h(Tbl,{cols:[{key:'name',label:'Ingredient'},{key:'qty',label:'In Stock',render:r=>`${fmt(r.qty)} kg`},{key:'reorderLevel',label:'Reorder At',render:r=>`${fmt(r.reorderLevel)} kg`}],rows:lowStock,emptyMsg:'✅ All stock levels OK'}))));
+        h(Tbl,{cols:[{key:'name',label:'Ingredient'},{key:'qty',label:'In Stock',render:r=>`${fmt(r.qty)} kg`},{key:'reorderLevel',label:'Reorder At',render:r=>`${fmt(r.reorderLevel)} kg`}],rows:lowStock,emptyMsg:'OK All stock levels OK'}))));
 }
 
-// ── INVENTORY ────────────────────────────────────────────────────────────────
+//  INVENTORY 
 
 function InventoryPage(){
   const {ingredients,inventory,setInventory,purchases,setPurchases,user}=useContext(Ctx);
   const [showAdd,setShowAdd]=useState(false);
   const [ns,setNs]=useState({itemId:'',qty:'',costPerKg:'',date:today(),supplier:''});
   const catColor=cat=>CATEGORY_META.find(c=>c.key===cat)?.color||C.muted;
-  const catIcon=cat=>CATEGORY_META.find(c=>c.key===cat)?.icon||'•';
+  const catIcon=cat=>CATEGORY_META.find(c=>c.key===cat)?.icon||'';
   const getSellPrice=(item)=>{
     if(item.sellPriceDirect)return item.sellPriceDirect;
     return Math.round((item.lastPrice||0)*(1+(item.margin||20)/100)*100)/100;
@@ -496,10 +496,10 @@ function InventoryPage(){
     h(PageHdr,{title:'Inventory Management',subtitle:'Track all feed ingredient stock levels and purchases',
       action:h(Btn,{onClick:()=>setShowAdd(true),variant:'success'},'+ Add Stock')}),
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:18}},
-      h(StatCard,{label:'Total Items',value:inventory.length,color:C.earth,icon:'📦'}),
-      h(StatCard,{label:'Stock Value',value:fmtKES(inventory.reduce((s,i)=>s+i.qty*(i.lastPrice||0),0)),color:C.grass,icon:'💰'}),
-      h(StatCard,{label:'Low Stock',value:inventory.filter(i=>i.qty <= i.reorderLevel).length,sub:'items',color:C.danger,icon:'⚠️'}),
-      h(StatCard,{label:'Out of Stock',value:inventory.filter(i=>i.qty === 0 || i.qty < 0).length,sub:'items',color:C.danger,icon:'🚫'})),
+      h(StatCard,{label:'Total Items',value:inventory.length,color:C.earth,icon:''}),
+      h(StatCard,{label:'Stock Value',value:fmtKES(inventory.reduce((s,i)=>s+i.qty*(i.lastPrice||0),0)),color:C.grass,icon:''}),
+      h(StatCard,{label:'Low Stock',value:inventory.filter(i=>i.qty <= i.reorderLevel).length,sub:'items',color:C.danger,icon:'!'}),
+      h(StatCard,{label:'Out of Stock',value:inventory.filter(i=>i.qty === 0 || i.qty < 0).length,sub:'items',color:C.danger,icon:'X'})),
     h(Card,null,h(CardTitle,null,'Current Inventory'),
       h(Tbl,{cols:[
         {key:'name',label:'Ingredient',render:r=>h('div',{style:{display:'flex',alignItems:'center',gap:8}},h('span',{style:{background:catColor(r.category)+'22',color:catColor(r.category),borderRadius:4,padding:'2px 6px',fontSize:11,fontWeight:700}},catIcon(r.category)),r.name)},
@@ -512,8 +512,8 @@ function InventoryPage(){
         {key:'reorderLevel',label:'Reorder At',render:r=>`${fmt(r.reorderLevel)} kg`},
         {key:'status',label:'Status',render:r=>h(Badge,{color:!(r.qty>0)?C.danger:r.qty<=r.reorderLevel?C.warning:C.grass},!(r.qty>0)?'Out of Stock':r.qty<=r.reorderLevel?'Low Stock':'OK')},
         {key:'price_action',label:'',render:r=>h('div',{style:{display:'flex',gap:4}},
-          h(Btn,{size:'sm',variant:'secondary',onClick:()=>openPriceEdit(r)},'💲 Price'),
-          user?.role==='admin'&&h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteInventoryItem(r)},'🗑'))},
+          h(Btn,{size:'sm',variant:'secondary',onClick:()=>openPriceEdit(r)},'$ Price'),
+          user?.role==='admin'&&h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteInventoryItem(r)},'[Delete]'))},
       ],rows:inventory,emptyMsg:'No inventory items.'})),
     showPriceEdit&&h(Modal,{title:'Set Sell Price  -  '+showPriceEdit.name,onClose:()=>setShowPriceEdit(null),width:440},
       h('div',{style:{background:C.parchment,borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:C.soil}},
@@ -522,7 +522,7 @@ function InventoryPage(){
         ['margin','direct'].map(m=>h('button',{key:m,onClick:()=>setPriceMode(m),
           style:{flex:1,padding:'9px 0',border:'none',cursor:'pointer',fontWeight:priceMode===m?700:400,
             background:priceMode===m?C.earth:'white',color:priceMode===m?'white':C.muted,fontSize:13}},
-          m==='margin'?'📊 Margin %':'💲 Fixed Price'))),
+          m==='margin'?' Margin %':'$ Fixed Price'))),
       priceMode==='margin'&&h('div',null,
         Inp({label:'Margin %',value:marginVal,onChange:setMarginVal,type:'number',placeholder:'e.g. 20'}),
         h('div',{style:{background:'#f0f9f4',borderRadius:8,padding:'10px 14px',fontSize:13,color:C.grass,fontWeight:700}},
@@ -547,7 +547,7 @@ function InventoryPage(){
         h(Btn,{onClick:addStock,variant:'success'},'Record Purchase'))));
 }
 
-// ── INGREDIENTS ───────────────────────────────────────────────────────────────
+//  INGREDIENTS 
 
 function IngredientsPage(){
   const {ingredients,setIngredients,inventory,setInventory}=useContext(Ctx);
@@ -560,7 +560,7 @@ function IngredientsPage(){
   const [form,setForm]=useState(blank);
   const showT=(msg,type='success')=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
   const filtered=ingredients.filter(i=>(filterCat==='all'||i.category===filterCat)&&(search===''||i.name.toLowerCase().includes(search.toLowerCase())));
-  const catMeta=key=>CATEGORY_META.find(c=>c.key===key)||{label:key,icon:'•',color:C.muted};
+  const catMeta=key=>CATEGORY_META.find(c=>c.key===key)||{label:key,icon:'',color:C.muted};
   const openEdit=ing=>{setEditing(ing);setForm({...ing,price:String(ing.price),cp:String(ing.cp||''),me:String(ing.me||''),fat:String(ing.fat||''),fibre:String(ing.fibre||''),ca:String(ing.ca||''),p:String(ing.p||''),antiNote:ing.antiNote||''});setShowForm(true);};
   const openAdd=()=>{setEditing(null);setForm(blank);setShowForm(true);};
   const saveIng=()=>{
@@ -593,7 +593,7 @@ function IngredientsPage(){
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12,marginBottom:18}},
       CATEGORY_META.map(cat=>h(StatCard,{key:cat.key,label:cat.label,value:ingredients.filter(i=>i.category===cat.key).length,sub:'ingredients',color:cat.color,icon:cat.icon}))),
     h('div',{style:{display:'flex',gap:8,marginBottom:13,flexWrap:'wrap',alignItems:'center'}},
-      h('input',{value:search,onChange:e=>setSearch(e.target.value),placeholder:'🔍 Search ingredients…',style:{padding:'7px 12px',border:`1px solid ${C.border}`,borderRadius:20,fontSize:13,background:'white',width:210}}),
+      h('input',{value:search,onChange:e=>setSearch(e.target.value),placeholder:' Search ingredients',style:{padding:'7px 12px',border:`1px solid ${C.border}`,borderRadius:20,fontSize:13,background:'white',width:210}}),
       [{key:'all',label:'All',icon:''},...CATEGORY_META].map(c=>h(Btn,{key:c.key,size:'sm',variant:filterCat===c.key?'primary':'secondary',onClick:()=>setFilterCat(c.key)},`${c.icon||''} ${c.label}`.trim()))),
     h(Card,null,h(CardTitle,null,`${filtered.length} ingredients`),
       h(Tbl,{cols:[
@@ -604,8 +604,8 @@ function IngredientsPage(){
         {key:'me',label:'ME',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.me||' - ')},
         {key:'ca',label:'Ca%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.ca||' - ')},
         {key:'p',label:'P%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.p||' - ')},
-        {key:'antiNote',label:'Anti-Nutritive Note',render:r=>r.antiNote?h('span',{style:{fontSize:11,color:C.warning}},'⚠ '+r.antiNote.slice(0,45)+(r.antiNote.length>45?'…':'')):h('span',{style:{color:C.muted}},' - ')},
-        {key:'actions',label:'',render:r=>h('div',{style:{display:'flex',gap:5}},h(Btn,{size:'sm',variant:'secondary',onClick:()=>openEdit(r)},'✏ Edit'),h(Btn,{size:'sm',variant:'danger',onClick:()=>delIng(r)},'🗑 Del'))},
+        {key:'antiNote',label:'Anti-Nutritive Note',render:r=>r.antiNote?h('span',{style:{fontSize:11,color:C.warning}},' '+r.antiNote.slice(0,45)+(r.antiNote.length>45?'':'')):h('span',{style:{color:C.muted}},' - ')},
+        {key:'actions',label:'',render:r=>h('div',{style:{display:'flex',gap:5}},h(Btn,{size:'sm',variant:'secondary',onClick:()=>openEdit(r)},' Edit'),h(Btn,{size:'sm',variant:'danger',onClick:()=>delIng(r)},'[Delete] Del'))},
       ],rows:filtered,emptyMsg:'No ingredients found.'})),
     showForm&&h(Modal,{title:editing?`Edit  -  ${editing.name}`:'Add New Ingredient',onClose:()=>{setShowForm(false);setEditing(null);},width:620},
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}},
@@ -615,7 +615,7 @@ function IngredientsPage(){
           h('select',{value:form.category,onChange:e=>setForm({...form,category:e.target.value}),style:{width:'100%',padding:'8px 11px',border:`1px solid ${C.border}`,borderRadius:8,fontSize:13,background:C.cream,marginBottom:0}},
             CATEGORY_META.map(c=>h('option',{key:c.key,value:c.key},c.icon+' '+c.label)))),
         h('div',{style:{background:'#f0f9f4',border:'1px solid '+C.leaf,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.soil}},
-              '💡 Prices are managed in Inventory → 💲 Price button')),
+              ' Prices are managed in Inventory  $ Price button')),
       h('div',{style:{borderTop:`1px solid ${C.border}`,paddingTop:13,marginBottom:13}},
         h('div',{style:{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,textTransform:'uppercase',color:C.muted,marginBottom:11}},'Nutritional Composition (per 100g as-fed)'),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}},
@@ -628,13 +628,13 @@ function IngredientsPage(){
       h('div',{style:{marginBottom:14}},
         h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:0.5,color:C.muted,marginBottom:4}},'Anti-Nutritive Factor Note (optional)'),
         h('textarea',{value:form.antiNote,onChange:e=>setForm({...form,antiNote:e.target.value}),placeholder:'e.g. Phytate phosphorus  -  limit to 15% in poultry without phytase enzyme',rows:2,style:{width:'100%',padding:'8px 11px',border:`1px solid ${C.border}`,borderRadius:8,fontSize:13,color:C.ink,background:C.cream,resize:'vertical'}})),
-      !editing&&h('div',{style:{background:'#f0f9f4',border:`1px solid ${C.leaf}`,borderRadius:8,padding:'9px 13px',fontSize:12,color:C.soil,marginBottom:13}},'✅ This ingredient will automatically be added to Inventory with 0 stock. Go to Inventory → Add Stock to record a purchase.'),
+      !editing&&h('div',{style:{background:'#f0f9f4',border:`1px solid ${C.leaf}`,borderRadius:8,padding:'9px 13px',fontSize:12,color:C.soil,marginBottom:13}},'OK This ingredient will automatically be added to Inventory with 0 stock. Go to Inventory  Add Stock to record a purchase.'),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
         h(Btn,{onClick:()=>{setShowForm(false);setEditing(null);},variant:'secondary'},'Cancel'),
         h(Btn,{onClick:saveIng,variant:'success'},editing?'Update Ingredient':'Add Ingredient'))));
 }
 
-// ── CUSTOMERS ────────────────────────────────────────────────────────────────
+//  CUSTOMERS 
 
 function CustomersPage(){
   const {customers,setCustomers}=useContext(Ctx);
@@ -674,12 +674,12 @@ function CustomersPage(){
 }
 
 
-// ── FORMULATOR ────────────────────────────────────────────────────────────────
+//  FORMULATOR 
 
 function FormulatorPage(){
   const {ingredients,setIngredients,inventory,setInventory,sales,setSales,customers,user}=useContext(Ctx);
 
-  // ── Animal requirements ──────────────────────────────────────────────────────
+  //  Animal requirements 
   const animalReqs=getAnimalReqs(db.get('animalReqs'));
   const speciesList=buildSpeciesList(animalReqs);
   const [species,setSpecies]=useState('');
@@ -687,7 +687,7 @@ function FormulatorPage(){
   const stages=species?getStagesForCategory(animalReqs,species):[];
   const reqs=species&&stage?getReqForStage(animalReqs,species,stage):null;
 
-  // ── Batch & sale state ───────────────────────────────────────────────────────
+  //  Batch & sale state 
   const [batchKg,setBatchKg]=useState(100);
   const [selPrice,setSelPrice]=useState('');
   const [custId,setCustId]=useState('');
@@ -698,7 +698,7 @@ function FormulatorPage(){
   const [toast,setToast]=useState(null);
   const showT=(msg,type='success')=>{setToast({msg,type});setTimeout(()=>setToast(null),3500);};
 
-  // ── Ingredient selection  -  auto-select all available inventory items ──────────
+  //  Ingredient selection  -  auto-select all available inventory items 
   const availableIngredients=ingredients.filter(i=>{
     const inv=inventory.find(x=>x.id===i.id);
     return inv&&inv.qty>0;
@@ -714,7 +714,7 @@ function FormulatorPage(){
     setSelIngrs(new Set(available.map(i=>i.id)));
   },[inventory.length]);
 
-  // ── Sell prices from inventory (not buy prices) ──────────────────────────────
+  //  Sell prices from inventory (not buy prices) 
   // getSellPriceForIng: reads inventory sell price, falls back to lastPrice * 1.2
   const getSellPriceForIng=(ing)=>{
     const inv=inventory.find(x=>x.id===ing.id);
@@ -726,7 +726,7 @@ function FormulatorPage(){
     return ing.sellPrice||ing.lastPrice||ing.price||0;
   };
 
-  // ── Ingredient helper ─────────────────────────────────────────────────────────
+  //  Ingredient helper 
   const toggleI=id=>{const n=new Set(selIngrs);n.has(id)?n.delete(id):n.add(id);setSelIngrs(n);};
   const getActive=()=>ingredients
     .filter(i=>selIngrs.has(i.id))
@@ -743,18 +743,18 @@ function FormulatorPage(){
       return base;
     }).filter(Boolean);
 
-  // ── ANF state ─────────────────────────────────────────────────────────────────
+  //  ANF state 
   const [anfWarnings,setAnfWarnings]=useState([]);
   const [anfExclusions,setAnfExclusions]=useState([]);
 
-  // ── Formula state ─────────────────────────────────────────────────────────────
+  //  Formula state 
   const [formula,setFormula]=useState(null);
   const [nutrients,setNutrients]=useState(null);
   const [costPKg,setCostPKg]=useState(0);
   const [solveQuality,setSolveQuality]=useState('');
   const [loading,setLoading]=useState(false);
 
-  // ── Auto-solve when species+stage changes ─────────────────────────────────────
+  //  Auto-solve when species+stage changes 
   useEffect(()=>{
     if(!species||!stage)return;
     setFormula(null);setNutrients(null);setCostPKg(0);setAnfWarnings([]);setAnfExclusions([]);
@@ -860,7 +860,7 @@ function FormulatorPage(){
     showT('Sale recorded! Stock updated.');
   };
 
-  // ── ANF status for ingredient cards ──────────────────────────────────────────
+  //  ANF status for ingredient cards 
   const getANFStatus=id=>{
     if(!species)return'neutral';
     const lim=getANFLimit(id,species);
@@ -875,11 +875,11 @@ function FormulatorPage(){
     neutral: {border:`1px solid ${C.border}`,background:'white'},
   }[s]||{border:`1px solid ${C.border}`,background:'white'});
 
-  // ── Ingredient in-stock check ────────────────────────────────────────────────
+  //  Ingredient in-stock check 
   const getInvItem=id=>inventory.find(x=>x.id===id);
   const inStock=id=>{const inv=getInvItem(id);return inv&&inv.qty>0;};
 
-  // ── Formula table display ────────────────────────────────────────────────────
+  //  Formula table display 
   const formulaRows=formula?Object.entries(formula)
     .sort((a,b)=>b[1]-a[1])
     .map(([id,pct],i,arr)=>{
@@ -892,7 +892,7 @@ function FormulatorPage(){
       return{id,name:ing?.name||id,pct,dpct,qty,sellPricePerKg:sp,sellCost:qty*sp};
     }):[];
 
-  // ── Nutrient display helper ──────────────────────────────────────────────────
+  //  Nutrient display helper 
   const NutRow=({label,val,req,unit})=>{
     if(!val&&val!==0)return null;
     const v=Number(val).toFixed(unit==='kcal/kg'?0:2);
@@ -907,7 +907,7 @@ function FormulatorPage(){
           color:over?C.warning:inRange?C.grass:C.danger}},v+' '+unit)));
   };
 
-  // ── RENDER ────────────────────────────────────────────────────────────────────
+  //  RENDER 
   return h('div',{style:{padding:'0 26px 26px'}},
     toast&&h(Toast,{msg:toast.msg,type:toast.type}),
     h(PageHdr,{title:'Feed Formulator',
@@ -921,9 +921,9 @@ function FormulatorPage(){
           h(CardTitle,null,'1  -  Animal'),
           h('div',{style:{padding:'0 14px 14px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
             h(Sel,{label:'Species',value:species,onChange:v=>{setSpecies(v);setStage('');setFormula(null);},
-              options:[{value:'',label:'Select species…'},...speciesList.map(s=>({value:s.value,label:s.icon+' '+s.label}))]}),
+              options:[{value:'',label:'Select species'},...speciesList.map(s=>({value:s.value,label:s.icon+' '+s.label}))]}),
             h(Sel,{label:'Stage',value:stage,onChange:v=>{setStage(v);setFormula(null);},
-              options:[{value:'',label:'Select stage…'},...stages.map(s=>({value:s,label:s}))],
+              options:[{value:'',label:'Select stage'},...stages.map(s=>({value:s,label:s}))],
               disabled:!species}),
             h('div',null,Inp({label:'Batch Size (kg)',value:batchKg,onChange:v=>setBatchKg(parseFloat(v)||100),type:'number'})),
             h('div',null,h(Sel,{label:'Customer (optional)',value:custId,onChange:setCustId,
@@ -947,12 +947,12 @@ function FormulatorPage(){
                   style:{padding:'7px 9px',borderRadius:8,cursor:'pointer',userSelect:'none',
                     transition:'all 0.15s',position:'relative',
                     ...(sel?{border:`2px solid ${C.grass}`,background:'#f0f9f4'}:{...anfStatusStyle(anfStat),opacity:hasStock?1:0.45})}},
-                  sel&&h('div',{style:{position:'absolute',top:3,right:5,fontSize:10,color:C.grass,fontWeight:700}},'✓'),
-                  anfStat==='excluded'&&h('div',{style:{position:'absolute',top:3,right:5,fontSize:10,color:C.danger}},'🚫'),
-                  anfStat==='caution'&&h('div',{style:{position:'absolute',top:3,right:5,fontSize:10}},'⚠️'),
+                  sel&&h('div',{style:{position:'absolute',top:3,right:5,fontSize:10,color:C.grass,fontWeight:700}},''),
+                  anfStat==='excluded'&&h('div',{style:{position:'absolute',top:3,right:5,fontSize:10,color:C.danger}},'X'),
+                  anfStat==='caution'&&h('div',{style:{position:'absolute',top:3,right:5,fontSize:10}},'!'),
                   h('div',{style:{fontSize:11,fontWeight:600,color:C.earth,lineHeight:1.3}},ing.name),
                   h('div',{style:{fontSize:10,color:C.muted,marginTop:2}},
-                    hasStock?`${fmt(inv.qty)} kg · KES ${getSellPriceForIng(ing)}/kg`:'No stock'));
+                    hasStock?`${fmt(inv.qty)} kg  KES ${getSellPriceForIng(ing)}/kg`:'No stock'));
               })))),
 
         // Section 3: Sell Prices (read-only from inventory)
@@ -961,7 +961,7 @@ function FormulatorPage(){
           h('div',{style:{padding:'0 12px 12px'}},
             h('div',{style:{background:'#f0f9f4',border:'1px solid '+C.leaf,borderRadius:8,
               padding:'8px 12px',fontSize:12,color:C.soil,marginBottom:10}},
-              '💡 Sell prices are set in Inventory → 💲 Price button. To change a price, update it there.'),
+              ' Sell prices are set in Inventory  $ Price button. To change a price, update it there.'),
             formulaRows.map(row=>h('div',{key:row.id,
               style:{display:'flex',justifyContent:'space-between',alignItems:'center',
                 padding:'6px 0',borderBottom:`1px solid ${C.border}`}},
@@ -976,28 +976,28 @@ function FormulatorPage(){
           h('div',{style:{padding:'12px 14px'}},
             h('div',{style:{display:'flex',gap:8,alignItems:'center',marginBottom:8}},
               h(Btn,{onClick:doFormulate,variant:'success',disabled:loading||!species||!stage},
-                loading?'⏳ Solving…':'🧮 Formulate'),
+                loading?' Solving':' Formulate'),
               formula&&solveQuality&&h('span',{style:{fontSize:11,padding:'3px 10px',borderRadius:12,
                 background:solveQuality==='optimal'?'#f0f9f4':solveQuality==='good'?'#f0f9f4':'#fff8e6',
                 color:solveQuality==='optimal'?C.grass:solveQuality==='good'?C.grass:C.savanna,
                 border:'1px solid '+(solveQuality==='optimal'?C.leaf:C.harvest)}},
-                solveQuality==='optimal'?'✓ Optimal solution':
-                solveQuality==='good'?'✓ Good solution':
-                solveQuality==='relaxed'?'⚠ Approximated':
-                '⚠ Fallback mix')),
+                solveQuality==='optimal'?' Optimal solution':
+                solveQuality==='good'?' Good solution':
+                solveQuality==='relaxed'?' Approximated':
+                ' Fallback mix')),
             !species&&h('div',{style:{fontSize:12,color:C.muted}},'Select species and stage above  -  formula auto-generates.'),
-            species&&stage&&!formula&&!loading&&h('div',{style:{fontSize:12,color:C.muted}},'Auto-solving…'),
+            species&&stage&&!formula&&!loading&&h('div',{style:{fontSize:12,color:C.muted}},'Auto-solving'),
             loading&&h('div',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13,color:C.muted}},
               h('div',{className:'spin',style:{width:16,height:16,border:'2px solid '+C.border,
                 borderTopColor:C.grass,borderRadius:'50%'}}),
-              'Finding optimal least-cost formula…'))),
+              'Finding optimal least-cost formula'))),
 
         // ANF warnings
         (anfWarnings.length>0||anfExclusions.length>0)&&h(Card,{style:{marginBottom:12}},
           h('div',{style:{padding:'10px 14px'}},
             anfExclusions.map((e,i)=>h('div',{key:'ex'+i,style:{display:'flex',gap:8,padding:'7px 10px',
               borderRadius:7,background:'#fde8e8',border:'1px solid '+C.danger+'44',marginBottom:5}},
-              h('span',null,'🚫'),
+              h('span',null,'X'),
               h('div',null,
                 h('div',{style:{fontWeight:700,fontSize:12,color:C.danger}},e.ingredient+' EXCLUDED  -  '+e.factor),
                 h('div',{style:{fontSize:11,color:C.muted}},e.note)))),
@@ -1005,7 +1005,7 @@ function FormulatorPage(){
               borderRadius:7,marginBottom:4,
               background:w.severity==='danger'?'#fde8e8':'#fff8e6',
               border:'1px solid '+(w.severity==='danger'?C.danger:C.harvest)+'44'}},
-              h('span',null,w.severity==='danger'?'❌':'⚠️'),
+              h('span',null,w.severity==='danger'?'X':'!'),
               h('div',null,
                 h('div',{style:{fontWeight:700,fontSize:12,color:w.severity==='danger'?C.danger:C.savanna}},
                   w.ingredient+(w.factor?'  -  '+w.factor:'')+
@@ -1039,12 +1039,12 @@ function FormulatorPage(){
                   h('td',{style:{padding:'7px 10px',textAlign:'right',fontFamily:"'DM Mono',monospace",color:C.grass,fontWeight:700}},'KES '+row.sellPricePerKg),
                   h('td',{style:{padding:'7px 10px',textAlign:'right',fontFamily:"'DM Mono',monospace"}},'KES '+(row.sellCost).toFixed(0)),
                   h('td',{style:{padding:'7px 10px',textAlign:'right'}},
-                    h(Badge,{color:ok?C.grass:C.danger},ok?'✓ OK':'Low')));
+                    h(Badge,{color:ok?C.grass:C.danger},ok?' OK':'Low')));
               })))),
           h('div',{style:{padding:'10px 14px',borderTop:'1px solid '+C.border,
             display:'flex',gap:8,justifyContent:'flex-end',flexWrap:'wrap'}},
-            h(Btn,{onClick:()=>setShowSave(true),variant:'secondary',size:'sm'},'💾 Save Formula'),
-            formula&&h(Btn,{onClick:doInitSale,variant:'success',size:'sm'},'🛒 Sell This Batch'))),
+            h(Btn,{onClick:()=>setShowSave(true),variant:'secondary',size:'sm'},' Save Formula'),
+            formula&&h(Btn,{onClick:doInitSale,variant:'success',size:'sm'},' Sell This Batch'))),
 
         // Nutrients
         formula&&nutrients&&reqs&&h(Card,null,
@@ -1059,14 +1059,14 @@ function FormulatorPage(){
             h(NutRow,{label:'Lysine',val:nutrients.lys,req:reqs.lys,unit:'%'}),
             h(NutRow,{label:'Methionine',val:nutrients.met,req:reqs.met,unit:'%'}))))),
 
-    // ── Save formula modal ──────────────────────────────────────────────────────
+    //  Save formula modal 
     showSave&&h(Modal,{title:'Save Formula',onClose:()=>setShowSave(false),width:400},
       Inp({label:'Formula Name',value:fName,onChange:setFName,placeholder:'e.g. Broiler Starter March 2024'}),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:14}},
         h(Btn,{onClick:()=>setShowSave(false),variant:'secondary'},'Cancel'),
         h(Btn,{onClick:doSaveFormula,variant:'success',disabled:!fName},'Save'))),
 
-    // ── Sell modal ──────────────────────────────────────────────────────────────
+    //  Sell modal 
     showSell&&pendingSale&&h(Modal,{title:'Confirm Sale',onClose:()=>setShowSell(false),width:480},
       h('div',{style:{background:C.parchment,borderRadius:8,padding:'11px 14px',marginBottom:14}},
         h('div',{style:{fontWeight:700,color:C.earth,marginBottom:6}},species+'  -  '+stage+' ('+batchKg+'kg)'),
@@ -1082,7 +1082,7 @@ function FormulatorPage(){
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
         h(Btn,{onClick:()=>setShowSell(false),variant:'secondary'},'Cancel'),
         h(Btn,{onClick:doConfirmSale,variant:'success',disabled:!selPrice||!(parseFloat(selPrice)>0)},
-          '✅ Customer Agreed - Record Sale')));
+          'OK Customer Agreed - Record Sale')));
 }
 
 
@@ -1113,10 +1113,10 @@ function SalesPage(){
     toast&&h(Toast,{msg:toast.msg,type:toast.type}),
     h(PageHdr,{title:'Sales Records',subtitle:'All confirmed feed sales'}),
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:18}},
-      h(StatCard,{label:'Total Sales',value:sales.length,icon:'🛒',color:C.earth}),
-      h(StatCard,{label:'Total Revenue',value:fmtKES(rev),icon:'💰',color:C.grass}),
-      h(StatCard,{label:'Total Cost',value:fmtKES(cost),icon:'📉',color:C.warning}),
-      h(StatCard,{label:'Total Profit',value:fmtKES(profit),sub:rev?((profit/rev)*100).toFixed(1)+'% margin':'',icon:'💹',color:profit>=0?C.grass:C.danger})),
+      h(StatCard,{label:'Total Sales',value:sales.length,icon:'',color:C.earth}),
+      h(StatCard,{label:'Total Revenue',value:fmtKES(rev),icon:'',color:C.grass}),
+      h(StatCard,{label:'Total Cost',value:fmtKES(cost),icon:'',color:C.warning}),
+      h(StatCard,{label:'Total Profit',value:fmtKES(profit),sub:rev?((profit/rev)*100).toFixed(1)+'% margin':'',icon:'',color:profit>=0?C.grass:C.danger})),
     h(Card,null,h(CardTitle,null,'All Sales'),
       h(Tbl,{cols:[
         {key:'date',label:'Date'},
@@ -1126,11 +1126,11 @@ function SalesPage(){
         {key:'cost',label:'Cost',render:r=>fmtKES(r.cost||r.totalCost||0)},
         {key:'total',label:'Revenue',render:r=>h('span',{style:{fontWeight:700,color:C.grass}},fmtKES(r.total||r.totalRevenue||0))},
         {key:'profit',label:'Profit',render:r=>h('span',{style:{color:(r.profit||0)>=0?C.grass:C.danger,fontWeight:700}},fmtKES(r.profit||0))},
-        user?.role==='admin'&&{key:'del',label:'',render:r=>h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteSale(r)},'🗑')},
+        user?.role==='admin'&&{key:'del',label:'',render:r=>h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteSale(r)},'[Delete]')},
       ].filter(Boolean),rows:sales.slice().reverse(),emptyMsg:'No sales yet.'})));
 }
 
-// ── REPORTS ──────────────────────────────────────────────────────────────────
+//  REPORTS 
 
 function ReportsPage(){
   const {sales,inventory,purchases}=useContext(Ctx);
@@ -1159,7 +1159,7 @@ function ReportsPage(){
 
   return h('div',{style:{padding:'0 26px 26px'}},
     h(PageHdr,{title:'Reports & Analytics',subtitle:'Financial overview across all periods',
-      action:h(Btn,{onClick:()=>window.print(),variant:'secondary',size:'sm'},'🖨 Print')}),
+      action:h(Btn,{onClick:()=>window.print(),variant:'secondary',size:'sm'},' Print')}),
     h('div',{style:{display:'flex',gap:8,marginBottom:18}},
       ['today','week','month','year'].map(p=>
         h(Btn,{key:p,onClick:()=>setPeriod(p),variant:period===p?'primary':'secondary',size:'sm'},
@@ -1167,10 +1167,10 @@ function ReportsPage(){
       )
     ),
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:18}},
-      h(StatCard,{label:pLabel+' Revenue',value:fmtKES(rev),color:C.grass,icon:'💰'}),
-      h(StatCard,{label:pLabel+' Profit',value:fmtKES(profit),sub:rev?((profit/rev)*100).toFixed(1)+'% margin':'',color:profit>=0?C.grass:C.danger,icon:'💹'}),
-      h(StatCard,{label:pLabel+' Purchases',value:fmtKES(purchCost),color:C.warning,icon:'📦'}),
-      h(StatCard,{label:pLabel+' Orders',value:fS.length,color:C.earth,icon:'🛒'})
+      h(StatCard,{label:pLabel+' Revenue',value:fmtKES(rev),color:C.grass,icon:''}),
+      h(StatCard,{label:pLabel+' Profit',value:fmtKES(profit),sub:rev?((profit/rev)*100).toFixed(1)+'% margin':'',color:profit>=0?C.grass:C.danger,icon:''}),
+      h(StatCard,{label:pLabel+' Purchases',value:fmtKES(purchCost),color:C.warning,icon:''}),
+      h(StatCard,{label:pLabel+' Orders',value:fS.length,color:C.earth,icon:''})
     ),
     h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:15,marginBottom:15}},
       h(Card,null,
@@ -1221,7 +1221,7 @@ function ReportsPage(){
   );
 }
 
-// ── FEEDING GUIDE ─────────────────────────────────────────────────────────────
+//  FEEDING GUIDE 
 
 function FeedingGuidePage(){
   const [species,setSpecies]=useState('');
@@ -1231,13 +1231,13 @@ function FeedingGuidePage(){
     h(PageHdr,{title:'Feeding Quantity Guide',subtitle:'Recommended daily feed amounts per species and production stage'}),
     h(Card,{style:{marginBottom:15}},h('div',{style:{padding:15}},
       h(Sel,{label:'Select Species',value:species,onChange:setSpecies,
-        options:[{value:'',label:'Choose a species…'},...speciesOptions.map(s=>({value:s,label:(CATEGORY_ICONS[s]||'🐾')+' '+s}))]}))),
+        options:[{value:'',label:'Choose a species'},...speciesOptions.map(s=>({value:s,label:(CATEGORY_ICONS[s]||'')+' '+s}))]}))),
     species&&stages.length>0&&h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:13}},
       stages.map(([sName,info])=>h(Card,{key:sName},
         h('div',{style:{background:`linear-gradient(135deg,${C.earth},${C.clay})`,padding:'11px 15px'}},
           h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:14,fontWeight:700,color:'white'}},sName)),
         h('div',{style:{padding:13}},
-          [{icon:'🥣',label:'Daily Ration',val:info.qty},{icon:'💧',label:'Water',val:info.water},{icon:'🕐',label:'Meals/Day',val:info.meals}]
+          [{icon:'',label:'Daily Ration',val:info.qty},{icon:'',label:'Water',val:info.water},{icon:'',label:'Meals/Day',val:info.meals}]
           .map((x,i)=>h('div',{key:i,style:{display:'flex',gap:9,marginBottom:9,alignItems:'flex-start'}},
             h('span',{style:{fontSize:17}},x.icon),
             h('div',null,
@@ -1245,7 +1245,7 @@ function FeedingGuidePage(){
               h('div',{style:{fontSize:13,fontWeight:600,color:C.earth}},x.val)))),
           info.notes&&h('div',{style:{background:C.parchment,borderRadius:6,padding:'7px 9px',fontSize:11,color:C.soil,borderLeft:`3px solid ${C.savanna}`,lineHeight:1.5,marginTop:8}},info.notes))))),
     !species&&h('div',{style:{textAlign:'center',padding:'60px 20px',color:C.muted}},
-      h('div',{style:{fontSize:52,marginBottom:12}},'🌾'),
+      h('div',{style:{fontSize:52,marginBottom:12}},''),
       h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:19,color:C.clay,marginBottom:7}},'Select a Species'),
       h('div',{style:{fontSize:14}},'Choose a species above to see daily feeding recommendations')));
 }
@@ -1254,12 +1254,12 @@ function EducationPage(){
   const [filter,setFilter]=useState('all');
   const [idx,setIdx]=useState(0);
   const [auto,setAuto]=useState(false);
-  const cats=[{key:'all',label:'All'},{key:'nutrition',label:'🥗 Nutrition'},{key:'cost',label:'💰 Cost'},{key:'storage',label:'🏚️ Storage'},{key:'health',label:'🩺 Health'},{key:'water',label:'💧 Water'},{key:'seasons',label:'🌦️ Seasons'},{key:'records',label:'📒 Records'}];
+  const cats=[{key:'all',label:'All'},{key:'nutrition',label:' Nutrition'},{key:'cost',label:' Cost'},{key:'storage',label:' Storage'},{key:'health',label:' Health'},{key:'water',label:' Water'},{key:'seasons',label:' Seasons'},{key:'records',label:' Records'}];
   const tips=TIPS.filter(t=>filter==='all'||t.cat===filter);
   useEffect(()=>{if(!auto)return;const t=setInterval(()=>setIdx(c=>(c+1)%tips.length),8000);return()=>clearInterval(t);},[auto,tips.length]);
   const tip=tips[idx%tips.length];
   return h('div',{style:{padding:'0 26px 26px'}},
-    h(PageHdr,{title:'Education Screen',subtitle:'Display tips on shop screens for waiting farmers',action:h(Btn,{onClick:()=>setAuto(!auto),variant:auto?'success':'secondary'},auto?'⏸ Pause':'▶ Auto-Play')}),
+    h(PageHdr,{title:'Education Screen',subtitle:'Display tips on shop screens for waiting farmers',action:h(Btn,{onClick:()=>setAuto(!auto),variant:auto?'success':'secondary'},auto?' Pause':' Auto-Play')}),
     tip&&h(Card,{style:{marginBottom:18,border:`2px solid ${C.savanna}`}},
       h('div',{style:{background:`linear-gradient(135deg,${C.earth},${C.clay})`,padding:'38px 46px',textAlign:'center',minHeight:260,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
         h('div',{style:{fontSize:60,marginBottom:14}},tip.icon),
@@ -1267,9 +1267,9 @@ function EducationPage(){
         h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:900,color:'white',margin:'13px 0 14px',lineHeight:1.2,maxWidth:560}},tip.title),
         h('div',{style:{fontSize:15,color:'rgba(255,255,255,0.75)',maxWidth:520,lineHeight:1.7}},tip.body)),
       h('div',{style:{padding:'11px 19px',display:'flex',alignItems:'center',justifyContent:'space-between',background:C.parchment}},
-        h(Btn,{onClick:()=>setIdx(c=>(c-1+tips.length)%tips.length),variant:'secondary',size:'sm'},'← Previous'),
+        h(Btn,{onClick:()=>setIdx(c=>(c-1+tips.length)%tips.length),variant:'secondary',size:'sm'},' Previous'),
         h('span',{style:{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.muted}},`${(idx%tips.length)+1} / ${tips.length}`),
-        h(Btn,{onClick:()=>setIdx(c=>(c+1)%tips.length),variant:'secondary',size:'sm'},'Next →'))),
+        h(Btn,{onClick:()=>setIdx(c=>(c+1)%tips.length),variant:'secondary',size:'sm'},'Next '))),
     h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}},cats.map(f=>h(Btn,{key:f.key,onClick:()=>{setFilter(f.key);setIdx(0);},variant:filter===f.key?'primary':'secondary',size:'sm'},f.label))),
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(250px,1fr))',gap:11}},
       tips.map((t,i)=>h('div',{key:t.id,onClick:()=>setIdx(i),style:{background:idx%tips.length===i?C.earth:'white',border:`1px solid ${idx%tips.length===i?C.earth:C.border}`,borderRadius:12,padding:'13px 15px',cursor:'pointer',transition:'all 0.15s'}},
@@ -1278,11 +1278,11 @@ function EducationPage(){
           h('div',null,
             h(Badge,{color:C.savanna},t.tag),
             h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:13,fontWeight:700,color:idx%tips.length===i?'white':C.earth,marginTop:4}},t.title),
-            h('div',{style:{fontSize:11,color:idx%tips.length===i?'rgba(255,255,255,0.55)':C.muted,marginTop:3,lineHeight:1.5}},t.body.slice(0,75)+'…')))))));
+            h('div',{style:{fontSize:11,color:idx%tips.length===i?'rgba(255,255,255,0.55)':C.muted,marginTop:3,lineHeight:1.5}},t.body.slice(0,75)+'')))))));
 }
 
 
-// ── NUTRITIONAL REQUIREMENTS ADMIN PAGE ──────────────────────────────────────
+//  NUTRITIONAL REQUIREMENTS ADMIN PAGE 
 
 function NutritionPage(){
   const {ingredients}=useContext(Ctx);
@@ -1364,7 +1364,7 @@ function NutritionPage(){
     toast&&h(Toast,{msg:toast.msg,type:toast.type}),
     h(PageHdr,{title:'Nutritional Requirements',subtitle:'Manage animal requirements and ingredient nutrient profiles',
       action:h('div',{style:{display:'flex',gap:8}},
-        h(Btn,{onClick:resetToDefaults,variant:'secondary',size:'sm'},'↺ Reset to Defaults'),
+        h(Btn,{onClick:resetToDefaults,variant:'secondary',size:'sm'},' Reset to Defaults'),
         tab==='requirements'&&h(Btn,{onClick:openAddReq,variant:'success',size:'sm'},'+ Add Animal Stage'))}),
 
     // Tabs
@@ -1373,15 +1373,15 @@ function NutritionPage(){
         h('button',{key:t,onClick:()=>setTab(t),style:{padding:'9px 18px',border:'none',borderBottom:tab===t?'3px solid '+C.earth:'3px solid transparent',
           background:'none',cursor:'pointer',fontSize:13,fontWeight:tab===t?700:400,color:tab===t?C.earth:C.muted,fontFamily:"'DM Sans',sans-serif",
           textTransform:'capitalize',marginBottom:-2}},
-          t==='requirements'?'🔬 Animal Requirements':t==='profiles'?'🧪 Ingredient Profiles':'📤 Upload CSV'))),
+          t==='requirements'?' Animal Requirements':t==='profiles'?' Ingredient Profiles':' Upload CSV'))),
 
-    // ── TAB: Animal Requirements ──
+    //  TAB: Animal Requirements 
     tab==='requirements'&&h('div',null,
       h('div',{style:{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}},
         h('span',{style:{fontSize:12,color:C.muted}},'Filter by species:'),
         h(Btn,{size:'sm',variant:!selCat?'primary':'secondary',onClick:()=>setSelCat('')},'All ('+reqs.length+')'),
         cats.map(cat=>h(Btn,{key:cat,size:'sm',variant:selCat===cat?'primary':'secondary',onClick:()=>setSelCat(cat)},
-          (CATEGORY_ICONS[cat]||'🐾')+' '+cat+' ('+reqs.filter(r=>r.category===cat).length+')'))),
+          (CATEGORY_ICONS[cat]||'')+' '+cat+' ('+reqs.filter(r=>r.category===cat).length+')'))),
       h(Card,null,h(CardTitle,null,filtReqs.length+' animal stages'),
         h('div',{style:{overflowX:'auto'}},
           h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:12}},
@@ -1390,23 +1390,23 @@ function NutritionPage(){
                 h('th',{key:i,style:{padding:'8px 10px',background:C.earth,color:'white',textAlign:'left',fontSize:10,fontFamily:"'DM Mono',monospace",letterSpacing:1,textTransform:'uppercase',whiteSpace:'nowrap'}},col)))),
             h('tbody',null,filtReqs.map((r,i)=>
               h('tr',{key:r.id,style:{borderBottom:'1px solid '+C.border,background:i%2===0?C.cream:'white'}},
-                h('td',{style:{padding:'8px 10px',fontWeight:600,color:C.earth}},h('span',{style:{marginRight:4}},CATEGORY_ICONS[r.category]||'🐾'),r.category),
+                h('td',{style:{padding:'8px 10px',fontWeight:600,color:C.earth}},h('span',{style:{marginRight:4}},CATEGORY_ICONS[r.category]||''),r.category),
                 h('td',{style:{padding:'8px 10px',color:C.soil}},r.stage),
                 ...['cp','me','fat','fibre','ca','p','lys','met'].map(nut=>
                   h('td',{key:nut,style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace",color:C.muted,whiteSpace:'nowrap'}},
                     r[nut][0]+' - '+r[nut][1])),
                 h('td',{style:{padding:'8px 10px'}},
                   h('div',{style:{display:'flex',gap:5}},
-                    h(Btn,{size:'sm',variant:'secondary',onClick:()=>openEditReq(r)},'✏'),
-                    h(Btn,{size:'sm',variant:'danger',onClick:()=>delReq(r)},'🗑')))))))),
+                    h(Btn,{size:'sm',variant:'secondary',onClick:()=>openEditReq(r)},''),
+                    h(Btn,{size:'sm',variant:'danger',onClick:()=>delReq(r)},'[Delete]')))))))),
       ),
       h('div',{style:{marginTop:12,padding:'10px 14px',background:C.parchment,borderRadius:8,fontSize:12,color:C.muted,border:'1px solid '+C.border}},
-        '💡 Requirements are used by the LP solver to formulate optimal least-cost feeds. Min and Max define the acceptable range for each nutrient in the finished feed.')),
+        ' Requirements are used by the LP solver to formulate optimal least-cost feeds. Min and Max define the acceptable range for each nutrient in the finished feed.')),
 
-    // ── TAB: Ingredient Profiles ──
+    //  TAB: Ingredient Profiles 
     tab==='profiles'&&h('div',null,
       h('div',{style:{background:'#fff8e6',border:'1px solid '+C.harvest,borderRadius:8,padding:'11px 15px',marginBottom:14,fontSize:13,color:C.soil}},
-        '📌 Ingredient nutritional profiles are managed in the ',h('strong',null,'Ingredients'),' page. Go to Admin → Ingredients → Edit any ingredient to update CP, ME, Ca, P, Lysine, Methionine, Fat and Fibre values.'),
+        ' Ingredient nutritional profiles are managed in the ',h('strong',null,'Ingredients'),' page. Go to Admin  Ingredients  Edit any ingredient to update CP, ME, Ca, P, Lysine, Methionine, Fat and Fibre values.'),
       h(Card,null,h(CardTitle,null,'Current Ingredient Nutrient Profiles'),
         h('div',{style:{overflowX:'auto'}},
           h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:12}},
@@ -1423,7 +1423,7 @@ function NutritionPage(){
                   ...['cp','me','fat','fibre','ca','p','lys','met'].map(n=>
                     h('td',{key:n,style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace",color:C.muted}},ing[n]??' - ')))))))),
 
-    // ── TAB: Upload ──
+    //  TAB: Upload 
     tab==='upload'&&h('div',null,
       h(Card,{style:{marginBottom:15}},
         h(CardTitle,null,'Upload Animal Requirements (CSV)'),
@@ -1435,10 +1435,10 @@ function NutritionPage(){
             h('strong',null,'Example row:'),h('br',null),'Poultry (Broiler), Starter (0-21 days), 22, 24, 3000, 3200, 4, 8, 0, 5, 0.9, 1.1, 0.45, 0.60, 1.20, 1.50, 0.50, 0.65'),
           h('div',{style:{marginBottom:14}},
             h('label',{style:{display:'block',padding:'14px 20px',background:C.earth,color:'white',borderRadius:8,cursor:'pointer',textAlign:'center',fontSize:14,fontWeight:600}},
-              '📤 Choose CSV File to Upload',
+              ' Choose CSV File to Upload',
               h('input',{type:'file',accept:'.csv',onChange:handleExcelUpload,style:{display:'none'}}))),
           h('div',{style:{fontSize:12,color:C.muted,lineHeight:1.7}},
-            '⚠ Uploading will REPLACE all existing requirements. To add individual stages, use the "Animal Requirements" tab → "+ Add Animal Stage" button. ',
+            ' Uploading will REPLACE all existing requirements. To add individual stages, use the "Animal Requirements" tab  "+ Add Animal Stage" button. ',
             h('strong',null,'Export the Excel ANIMAL_REQUIREMENTS sheet as CSV'),' to use the provided reference data directly.'))),
 
       h(Card,null,
@@ -1449,9 +1449,9 @@ function NutritionPage(){
             reqs.forEach(r=>rows.push([r.category,r.stage,...r.cp,...r.me,...r.fat,...r.fibre,...r.ca,...r.p,...r.lys,...r.met]));
             const csv=rows.map(r=>r.join(',')).join('\n');
             const a=document.createElement('a');a.href='data:text/csv,'+encodeURIComponent(csv);a.download='animal_requirements.csv';a.click();
-          },variant:'secondary'},'⬇ Export Requirements CSV')))),
+          },variant:'secondary'},' Export Requirements CSV')))),
 
-    // ── Edit/Add Modal ──
+    //  Edit/Add Modal 
     showReqForm&&h(Modal,{title:editReq?'Edit: '+editReq.category+'  -  '+editReq.stage:'Add Animal Stage',onClose:()=>{setShowReqForm(false);setEditReq(null);},width:680},
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}},
         h('div',null,Inp({label:'Animal Category *',value:reqForm.category,onChange:v=>setReqForm({...reqForm,category:v}),placeholder:'e.g. Poultry (Broiler)'})),
@@ -1472,7 +1472,7 @@ function NutritionPage(){
         h(Btn,{onClick:saveReq,variant:'success'},editReq?'Update Requirements':'Add Animal Stage')))));
 }
 
-// ── USERS ─────────────────────────────────────────────────────────────────────
+//  USERS 
 
 function UsersPage({currentUser}){
   const [users,setUsersState]=useState(()=>db.get('users',SEED_USERS));
@@ -1487,15 +1487,15 @@ function UsersPage({currentUser}){
 
   const saveUsers=next=>{setUsersState(next);db.set('users',next);serverPush('users',next);};
 
-  // ── Add user state ──────────────────────────────────────────────────────────
+  //  Add user state 
   const [showAdd,setShowAdd]=useState(false);
   const [form,setForm]=useState({name:'',username:'',password:'',email:'',role:'staff',active:true});
 
-  // ── Edit user state ─────────────────────────────────────────────────────────
+  //  Edit user state 
   const [editUser,setEditUser]=useState(null);
   const [editForm,setEditForm]=useState({name:'',username:'',email:'',role:'staff',active:true});
 
-  // ── Password change state ───────────────────────────────────────────────────
+  //  Password change state 
   const [pwdUser,setPwdUser]=useState(null);
   const [newPwd,setNewPwd]=useState('');
   const [confirmPwd,setConfirmPwd]=useState('');
@@ -1564,13 +1564,13 @@ function UsersPage({currentUser}){
     h(PageHdr,{title:'User Management',subtitle:'Manage staff accounts and access levels',
       action:h(Btn,{onClick:()=>setShowAdd(true),variant:'success'},'+ New User')}),
 
-    // ── Stats ──
+    //  Stats 
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:18}},
-      h(StatCard,{label:'Total Users',value:users.length,color:C.earth,icon:'👥'}),
-      h(StatCard,{label:'Active',value:users.filter(u=>u.active!==false).length,color:C.grass,icon:'✅'}),
-      h(StatCard,{label:'Admins',value:users.filter(u=>u.role==='admin').length,color:C.savanna,icon:'🔐'})),
+      h(StatCard,{label:'Total Users',value:users.length,color:C.earth,icon:''}),
+      h(StatCard,{label:'Active',value:users.filter(u=>u.active!==false).length,color:C.grass,icon:'OK'}),
+      h(StatCard,{label:'Admins',value:users.filter(u=>u.role==='admin').length,color:C.savanna,icon:''})),
 
-    // ── Users table ──
+    //  Users table 
     h(Card,null,h(CardTitle,null,'All Users'),
       h('div',{style:{overflowX:'auto'}},
         h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:13}},
@@ -1590,15 +1590,15 @@ function UsersPage({currentUser}){
                 h(Badge,{color:u.active!==false?C.grass:C.danger},u.active!==false?'Active':'Inactive')),
               h('td',{style:{padding:'8px 12px'}},
                 h('div',{style:{display:'flex',gap:5,flexWrap:'wrap'}},
-                  h(Btn,{size:'sm',variant:'secondary',onClick:()=>openEdit(u)},'✏ Edit'),
-                  h(Btn,{size:'sm',variant:'secondary',onClick:()=>openPwd(u)},'🔑 Password'),
+                  h(Btn,{size:'sm',variant:'secondary',onClick:()=>openEdit(u)},' Edit'),
+                  h(Btn,{size:'sm',variant:'secondary',onClick:()=>openPwd(u)},' Password'),
                   currentUser?.role==='admin'&&u.id!==currentUser?.id&&
                     h(Btn,{size:'sm',variant:u.active!==false?'secondary':'success',onClick:()=>toggleActive(u)},
                       u.active!==false?'Deactivate':'Activate'),
                   currentUser?.role==='admin'&&u.id!==currentUser?.id&&
-                    h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteUser(u)},'🗑')))))))),
+                    h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteUser(u)},'[Delete]')))))))),
 
-    // ── Add User Modal ──
+    //  Add User Modal 
     showAdd&&h(Modal,{title:'Add New User',onClose:()=>setShowAdd(false),width:480},
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
         h('div',null,Inp({label:'Full Name *',value:form.name,onChange:v=>setForm({...form,name:v}),placeholder:'e.g. Jane Wanjiku'})),
@@ -1615,7 +1615,7 @@ function UsersPage({currentUser}){
         h(Btn,{onClick:()=>setShowAdd(false),variant:'secondary'},'Cancel'),
         h(Btn,{onClick:addUser,variant:'success',disabled:!form.name||!form.username||!form.password},'Create User'))),
 
-    // ── Edit Profile Modal ──
+    //  Edit Profile Modal 
     editUser&&h(Modal,{title:'Edit Profile  -  '+editUser.name,onClose:()=>setEditUser(null),width:480},
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
         h('div',null,Inp({label:'Full Name *',value:editForm.name,onChange:v=>setEditForm({...editForm,name:v})})),
@@ -1628,7 +1628,7 @@ function UsersPage({currentUser}){
         h(Btn,{onClick:()=>setEditUser(null),variant:'secondary'},'Cancel'),
         h(Btn,{onClick:saveEdit,variant:'success',disabled:!editForm.name||!editForm.username},'Save Changes'))),
 
-    // ── Change Password Modal ──
+    //  Change Password Modal 
     pwdUser&&h(Modal,{title:'Change Password  -  '+pwdUser.name,onClose:()=>setPwdUser(null),width:420},
       h('div',{style:{background:C.parchment,borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:C.soil}},
         pwdUser.id===currentUser?.id&&currentUser?.role!=='admin'
@@ -1729,31 +1729,31 @@ function ResourcesPage(){
     w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
     <style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#3d2b1f}table{border-collapse:collapse;width:100%}@media print{button{display:none}}</style>
     </head><body>
-    <h1>🌾 ${title}</h1>
+    <h1>${title}</h1>
     <p style="color:#7a6a55;font-size:12px">Generated: ${new Date().toLocaleString('en-KE')} | Wa-Mifugo Feeds</p>
     <table><thead><tr>${th}</tr></thead><tbody>${tbody}</tbody></table>
-    <br><button onclick="window.print()" style="background:#3d2b1f;color:white;padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨 Print / Save PDF</button>
+    <br><button onclick="window.print()" style="background:#3d2b1f;color:white;padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px"> Print / Save PDF</button>
     </body></html>`);
     w.document.close();
   }
 
   const exports=[
-    {icon:'🧂',title:'Ingredients',desc:'Nutrient profiles, prices, inclusion limits',
+    {icon:'',title:'Ingredients',desc:'Nutrient profiles, prices, inclusion limits',
       onCSV:()=>dlCSV([['ID','Name','Category','Price (KES/kg)','CP%','ME kcal/kg','Ca%','P%','Lys%','Met%','Min Incl%','Max Incl%'],...(ingredients||[]).map(i=>[i.id,i.name,i.category||'',i.price||0,i.cp||0,i.me||0,i.ca||0,i.p||0,i.lys||0,i.met||0,i.minIncl||0,i.maxIncl||100])],'ingredients.csv'),
       onPrint:()=>printReport('Ingredient Register',(ingredients||[]).map(i=>[i.name,i.category||'','KES '+i.price,i.cp,i.me,i.ca,i.p]),['Ingredient','Category','Price/kg','CP%','ME','Ca%','P%'])},
-    {icon:'📦',title:'Inventory',desc:'Current stock levels and valuations',
+    {icon:'',title:'Inventory',desc:'Current stock levels and valuations',
       onCSV:()=>dlCSV([['Name','Category','Stock (kg)','Buy Price','Sell Price','Stock Value'],...(inventory||[]).map(i=>[i.name,i.category||'',i.qty||0,i.lastPrice||0,i.sellPrice||'','KES '+(((i.qty||0)*(i.lastPrice||0)).toLocaleString())])],'inventory.csv'),
       onPrint:()=>printReport('Inventory Report',(inventory||[]).map(i=>[i.name,i.qty+' kg','KES '+i.lastPrice,'KES '+((i.qty||0)*(i.lastPrice||0)).toLocaleString()]),['Ingredient','Stock','Buy Price','Stock Value'])},
-    {icon:'💰',title:'Sales',desc:'All sales records with profit analysis',
+    {icon:'',title:'Sales',desc:'All sales records with profit analysis',
       onCSV:()=>dlCSV([['Date','Customer','Product','Batch kg','Revenue','Cost','Profit'],...(sales||[]).map(s=>[s.date,s.customerName||s.customer||'',s.product,s.batchKg,s.total||s.totalRevenue||0,s.cost||s.totalCost||0,s.profit||0])],'sales.csv'),
       onPrint:()=>printReport('Sales Report',(sales||[]).map(s=>[s.date,s.customerName||s.customer||'',s.product,s.batchKg+'kg','KES '+(s.total||s.totalRevenue||0).toLocaleString()]),['Date','Customer','Product','Batch','Revenue'])},
-    {icon:'🛒',title:'Purchases',desc:'All stock purchase records',
+    {icon:'',title:'Purchases',desc:'All stock purchase records',
       onCSV:()=>dlCSV([['Date','Ingredient','Qty (kg)','Cost/kg','Total','Supplier'],...(purchases||[]).map(p=>[p.date,p.itemName,p.qty,p.costPerKg,p.total,p.supplier||''])],'purchases.csv'),
       onPrint:()=>printReport('Purchase Records',(purchases||[]).map(p=>[p.date,p.itemName,p.qty+'kg','KES '+p.costPerKg,'KES '+(p.total||0).toLocaleString(),p.supplier||'']),['Date','Ingredient','Qty','Cost/kg','Total','Supplier'])},
-    {icon:'👥',title:'Customers',desc:'Customer directory',
+    {icon:'',title:'Customers',desc:'Customer directory',
       onCSV:()=>dlCSV([['Name','Phone','Email','Location'],...(customers||[]).map(c=>[c.name,c.phone||'',c.email||'',c.location||''])],'customers.csv'),
       onPrint:()=>printReport('Customer Directory',(customers||[]).map(c=>[c.name,c.phone||'',c.email||'',c.location||'']),['Name','Phone','Email','Location'])},
-    {icon:'🔬',title:'Animal Requirements',desc:'Nutritional targets by species and stage',
+    {icon:'',title:'Animal Requirements',desc:'Nutritional targets by species and stage',
       onCSV:()=>dlCSV([['Category','Stage','CP Min','CP Max','ME Min','ME Max','Ca Min','Ca Max','P Min','P Max'],...SEED_ANIMAL_REQS.map(a=>[a.category,a.stage,...a.cp,...a.me,...a.ca,...a.p])],'animal_requirements.csv'),
       onPrint:()=>printReport('Animal Nutritional Requirements',SEED_ANIMAL_REQS.map(a=>[a.category,a.stage,a.cp.join('-'),a.me.join('-'),a.ca.join('-'),a.p.join('-')]),['Category','Stage','CP%','ME kcal/kg','Ca%','P%'])},
   ];
@@ -1770,8 +1770,8 @@ function ResourcesPage(){
               h('div',{style:{fontWeight:700,color:C.earth,fontSize:14}},ex.title),
               h('div',{style:{fontSize:12,color:C.muted}},ex.desc))),
           h('div',{style:{display:'flex',gap:8}},
-            h(Btn,{onClick:ex.onCSV,size:'sm',variant:'secondary'},'⬇ Export CSV'),
-            h(Btn,{onClick:ex.onPrint,size:'sm',variant:'secondary'},'🖨 Print PDF')))))));
+            h(Btn,{onClick:ex.onCSV,size:'sm',variant:'secondary'},' Export CSV'),
+            h(Btn,{onClick:ex.onPrint,size:'sm',variant:'secondary'},' Print PDF')))))));
 }
 
 
@@ -1802,7 +1802,7 @@ export default function Pages({ page, setPage, user, onLogin, onLogout, sidebarO
       h("button", {
         onClick: () => setSidebarOpen(true),
         style: { background:"none", border:"none", cursor:"pointer", color:"white", fontSize:22, lineHeight:1, padding:"4px 8px" }
-      }, "☰"),
+      }, ""),
       h("div", { style: { fontFamily:"Playfair Display, serif", color:"white", fontWeight:700, fontSize:16 } }, "Wa-Mifugo"),
       h("div", { style: { marginLeft:"auto", fontSize:11, color:"rgba(255,255,255,0.6)" } }, user.name)),
     h("div", { className:"wm-overlay", onClick: () => setSidebarOpen(false) }),
