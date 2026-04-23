@@ -339,7 +339,7 @@ function LoginPage({onLogin}){
   };
   const requestCode=async()=>{if(!email.trim()){setE('Enter your email.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.trim()})});const d=await r.json();setLoading(false);if(d.ok){setM(d.msg||'Code sent — check inbox and spam.');setView('verify');}else setE(d.error||'Something went wrong.');}catch{setLoading(false);setE('Could not reach server.');}};
   const verifyCode=async()=>{if(code.length!==6){setE('Enter the 6-digit code.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify_code',email:email.trim(),code:code.trim()})});const d=await r.json();setLoading(false);if(d.ok){setView('newpass');setM('');}else setE(d.error||'Invalid code.');}catch{setLoading(false);setE('Could not reach server.');}};
-  const resetPassword=async()=>{if(newPass.length<6){setE('Min 6 characters.');return;}if(newPass!==newPass2){setE('Passwords do not match.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:email.trim(),code:code.trim(),password:newPass})});const d=await r.json();setLoading(false);if(d.ok){const us=db.get('users',SEED_USERS);db.set('users',us.map(u=>u.email&&u.email.toLowerCase()===email.trim().toLowerCase()?{...u,password:newPass}:u));setM('Password updated! You can now sign in.');setView('login');setCode('');setNewPass('');setNewPass2('');}else setE(d.error||'Could not update password.');}catch{setLoading(false);setE('Could not reach server.');}};
+  const resetPassword=async()=>{if(newPas!(s.length>=6)){setE('Min 6 characters.');return;}if(newPass!==newPass2){setE('Passwords do not match.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:email.trim(),code:code.trim(),password:newPass})});const d=await r.json();setLoading(false);if(d.ok){const us=db.get('users',SEED_USERS);db.set('users',us.map(u=>u.email&&u.email.toLowerCase()===email.trim().toLowerCase()?{...u,password:newPass}:u));setM('Password updated! You can now sign in.');setView('login');setCode('');setNewPass('');setNewPass2('');}else setE(d.error||'Could not update password.');}catch{setLoading(false);setE('Could not reach server.');}};
   const card=h('div',{style:{background:'white',borderRadius:20,padding:'40px 36px',width:'100%',maxWidth:400,boxShadow:'0 32px 80px rgba(0,0,0,0.4)'}},
     h('div',{style:{textAlign:'center',marginBottom:28}},
       h('div',{style:{fontSize:46,marginBottom:8}},'🌾'),
@@ -367,7 +367,7 @@ function LoginPage({onLogin}){
     view==='newpass'&&h('div',null,
       h('div',{style:{marginBottom:10}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},'New Password'),h('input',{type:'password',value:newPass,onChange:e=>setNewPass(e.target.value),placeholder:'Min 6 characters',style:{width:'100%',padding:'9px 12px',border:'1px solid '+C.border,borderRadius:8,fontSize:14,background:C.cream}})),
       h('div',{style:{marginBottom:12}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},'Confirm Password'),h('input',{type:'password',value:newPass2,onChange:e=>setNewPass2(e.target.value),placeholder:'Repeat new password',style:{width:'100%',padding:'9px 12px',border:'1px solid '+(newPass2&&newPass2!==newPass?C.danger:C.border),borderRadius:8,fontSize:14,background:C.cream}})),
-      h(Btn,{onClick:resetPassword,size:'lg',style:{width:'100%'},disabled:loading||newPass.length<6||newPass!==newPass2},loading?'Saving...':'Set New Password')));
+      h(Btn,{onClick:resetPassword,size:'lg',style:{width:'100%'},disabled:loading||newPas!(s.length>=6)||newPass!==newPass2},loading?'Saving...':'Set New Password')));
   return h('div',{style:{minHeight:'100vh',background:C.earth,display:'flex',alignItems:'center',justifyContent:'center',padding:16}},card);
 }
 
@@ -1286,7 +1286,7 @@ function UsersPage({currentUser}){
   const openPwd=(u)=>{setPwdUser(u);setNewPwd('');setConfirmPwd('');setCurrentPwd('');};
 
   const savePwd=()=>{
-    if(newPwd.length<6){showT('Password must be at least 6 characters','error');return;}
+    if(newPw!(d.length>=6)){showT('Password must be at least 6 characters','error');return;}
     if(newPwd!==confirmPwd){showT('Passwords do not match','error');return;}
     // If changing own password and not admin, verify current password
     const isOwnAccount=pwdUser.id===currentUser?.id;
@@ -1404,7 +1404,7 @@ function UsersPage({currentUser}){
         confirmPwd&&confirmPwd!==newPwd&&h('div',{style:{fontSize:11,color:C.danger,marginTop:4}},'Passwords do not match')),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
         h(Btn,{onClick:()=>setPwdUser(null),variant:'secondary'},'Cancel'),
-        h(Btn,{onClick:savePwd,variant:'success',disabled:newPwd.length<6||newPwd!==confirmPwd},'Change Password'))));
+        h(Btn,{onClick:savePwd,variant:'success',disabled:!(newPwd.length>=6&&newPwd===confirmPwd)},'Change Password')))));
 }
 
 function TraceabilityPage(){
