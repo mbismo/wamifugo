@@ -339,7 +339,7 @@ function LoginPage({onLogin}){
   };
   const requestCode=async()=>{if(!email.trim()){setE('Enter your email.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.trim()})});const d=await r.json();setLoading(false);if(d.ok){setM(d.msg||'Code sent  -  check inbox and spam.');setView('verify');}else setE(d.error||'Something went wrong.');}catch{setLoading(false);setE('Could not reach server.');}};
   const verifyCode=async()=>{if(code.length!==6){setE('Enter the 6-digit code.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify_code',email:email.trim(),code:code.trim()})});const d=await r.json();setLoading(false);if(d.ok){setView('newpass');setM('');}else setE(d.error||'Invalid code.');}catch{setLoading(false);setE('Could not reach server.');}};
-  const resetPassword=async()=>{if(!(newPass.length >= 6)){setE('Min 6 characters.');return;}if(newPass!==newPass2){setE('Passwords do not match.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:email.trim(),code:code.trim(),password:newPass})});const d=await r.json();setLoading(false);if(d.ok){const us=db.get('users',SEED_USERS);db.set('users',us.map(u=>u.email&&u.email.toLowerCase()===email.trim().toLowerCase()?{...u,password:newPass}:u));setM('Password updated! You can now sign in.');setView('login');setCode('');setNewPass('');setNewPass2('');}else setE(d.error||'Could not update password.');}catch{setLoading(false);setE('Could not reach server.');}};
+  const resetPassword=async()=>{if(!newPass){setE('Min 6 characters.');return;}if(newPass!==newPass2){setE('Passwords do not match.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:email.trim(),code:code.trim(),password:newPass})});const d=await r.json();setLoading(false);if(d.ok){const us=db.get('users',SEED_USERS);db.set('users',us.map(u=>u.email&&u.email.toLowerCase()===email.trim().toLowerCase()?{...u,password:newPass}:u));setM('Password updated! You can now sign in.');setView('login');setCode('');setNewPass('');setNewPass2('');}else setE(d.error||'Could not update password.');}catch{setLoading(false);setE('Could not reach server.');}};
   const card=h('div',{style:{background:'white',borderRadius:20,padding:'40px 36px',width:'100%',maxWidth:400,boxShadow:'0 32px 80px rgba(0,0,0,0.4)'}},
     h('div',{style:{textAlign:'center',marginBottom:28}},
       h('div',{style:{fontSize:46,marginBottom:8}},''),
@@ -355,19 +355,19 @@ function LoginPage({onLogin}){
       h('div',{style:{textAlign:'center',marginTop:14}},h('span',{style:{fontSize:13,color:C.muted,cursor:'pointer',textDecoration:'underline'},onClick:()=>{setView('forgot');setErr('');setMsg('');}},(' Forgot password?'))),
     view==='forgot'&&h('div',null,
       Inp({label:'Registered Email',value:email,onChange:setEmail,type:'email',placeholder:'e.g. jane@example.com'}),
-      h(Btn,{onClick:requestCode,size:'lg',style:{width:'100%',marginTop:10},disabled:loading},loading?'Sending...':'Send Reset Code'),
+      h(Btn,{onClick:requestCode,size:'lg',style:{width:'100%',marginTop:10},disabled:loading},(loading?'Sending...':'Send Reset Code')),
       h('div',{style:{textAlign:'center',marginTop:12}},h('span',{style:{fontSize:13,color:C.muted,cursor:'pointer',textDecoration:'underline'},onClick:()=>{setView('login');setErr('');setMsg('');}},(' Back to sign in'))),
     view==='verify'&&h('div',null,
       h('p',{style:{fontSize:13,color:C.muted,marginBottom:12}},'Code sent to ',h('strong',null,email),'. Expires in 15 min.'),
       h('div',{style:{marginBottom:12}},
         h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:5}},('6-Digit Code'),
         h('input',{value:code,onChange:e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6)),placeholder:'000000',maxLength:6,style:{width:'100%',padding:'12px',border:'2px solid '+C.border,borderRadius:10,fontSize:28,fontFamily:"'DM Mono',monospace",fontWeight:700,letterSpacing:12,textAlign:'center',background:C.cream}})),
-      h(Btn,{onClick:verifyCode,size:'lg',style:{width:'100%'},disabled:loading||code.length!==6},loading?'Verifying...':'Verify Code'),
+      h(Btn,{onClick:verifyCode,size:'lg',style:{width:'100%'},disabled:loading||code.length!==6},(loading?'Verifying...':'Verify Code')),
       h('div',{style:{textAlign:'center',marginTop:12}},h('span',{style:{fontSize:13,color:C.muted,cursor:'pointer',textDecoration:'underline'},onClick:()=>{setView('forgot');setCode('');setErr('');setMsg('');}},(' Resend code'))),
     view==='newpass'&&h('div',null,
       h('div',{style:{marginBottom:10}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},('New Password'),h('input',{type:'password',value:newPass,onChange:e=>setNewPass(e.target.value),placeholder:'Min 6 characters',style:{width:'100%',padding:'9px 12px',border:'1px solid '+C.border,borderRadius:8,fontSize:14,background:C.cream}})),
       h('div',{style:{marginBottom:12}},h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',color:C.muted,marginBottom:4}},('Confirm Password'),h('input',{type:'password',value:newPass2,onChange:e=>setNewPass2(e.target.value),placeholder:'Repeat new password',style:{width:'100%',padding:'9px 12px',border:'1px solid '+(newPass2&&newPass2!==newPass?C.danger:C.border),borderRadius:8,fontSize:14,background:C.cream}})),
-      h(Btn,{onClick:resetPassword,size:'lg',style:{width:'100%'},disabled:loading||!(newPass.length >= 6)||newPass!==newPass2},loading?'Saving...':'Set New Password')));
+      h(Btn,{onClick:resetPassword,size:'lg',style:{width:'100%'},disabled:loading||!newPass||!newPass2||newPass!==newPass2},(loading?'Saving...':'Set New Password'))));
   return h('div',{style:{minHeight:'100vh',background:C.earth,display:'flex',alignItems:'center',justifyContent:'center',padding:16}},card);
 }
 
@@ -416,7 +416,7 @@ function DashboardPage(){
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:13,marginBottom:18}},
       h(StatCard,{label:"Today's Sales",value:fmtKES(todaySales.reduce((s,x)=>s+x.total,0)),sub:`${todaySales.length} orders`,color:C.grass,icon:''}),
       h(StatCard,{label:'Monthly Revenue',value:fmtKES(rev),sub:'Last 30 days',color:C.savanna,icon:''}),
-      h(StatCard,{label:'Monthly Profit',value:fmtKES(profit),sub:`${rev?((profit/rev)*100).toFixed(1):0}% margin`,color:profit>=0?C.grass:C.danger,icon:''}),
+      h(StatCard,{label:'Monthly Profit',value:fmtKES(profit),sub:`${rev?((profit/rev)*100).toFixed(1):0}% margin`,color:profit > -1?C.grass:C.danger,icon:''}),
       h(StatCard,{label:'Low Stock Alerts',value:lowStock.length,sub:'items need reorder',color:lowStock.length>0?C.danger:C.grass,icon:'!'})),
     h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr',gap:15,marginBottom:15}},
       h(Card,null,
@@ -600,7 +600,7 @@ function IngredientsPage(){
         {key:'name',label:'Name',render:r=>h('span',{style:{fontWeight:600,color:C.earth}},r.name)},
         {key:'category',label:'Category',render:r=>{const m=catMeta(r.category);return h(Badge,{color:m.color},m.icon+' '+m.label);}},
         {key:'price',label:'Sell Price/kg',render:r=>{const inv=inventory?.find(x=>x.id===r.id);const sp=inv?.sellPriceDirect||(inv?.lastPrice?(inv.lastPrice*(1+(inv.margin||20)/100)):0);return h('span',{style:{fontFamily:"'DM Mono',monospace",color:C.grass}},sp?'KES '+sp.toFixed(0):' - ')}},
-        {key:'cp',label:'CP%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace",color:r.cp>=30?C.grass:C.soil}},r.cp||' - ')},
+        {key:'cp',label:'CP%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace",color:(r.cp||0) > 29?C.grass:C.soil}},r.cp||' - ')},
         {key:'me',label:'ME',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.me||' - ')},
         {key:'ca',label:'Ca%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.ca||' - ')},
         {key:'p',label:'P%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.p||' - ')},
@@ -631,7 +631,7 @@ function IngredientsPage(){
       !editing&&h('div',{style:{background:'#f0f9f4',border:`1px solid ${C.leaf}`,borderRadius:8,padding:'9px 13px',fontSize:12,color:C.soil,marginBottom:13}},('OK This ingredient will automatically be added to Inventory with 0 stock. Go to Inventory  Add Stock to record a purchase.'),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
         h(Btn,{onClick:()=>{setShowForm(false);setEditing(null);},variant:'secondary'},('Cancel'),
-        h(Btn,{onClick:saveIng,variant:'success'},editing?'Update Ingredient':'Add Ingredient'))));
+        h(Btn,{onClick:saveIng,variant:'success'},(editing?'Update Ingredient':'Add Ingredient')))));
 }
 
 //  CUSTOMERS 
@@ -670,7 +670,7 @@ function CustomersPage(){
         h('textarea',{value:form.notes,onChange:e=>setForm({...form,notes:e.target.value}),rows:3,style:{width:'100%',padding:'8px 11px',border:`1px solid ${C.border}`,borderRadius:8,fontSize:13,color:C.ink,background:C.cream,resize:'vertical'}})),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
         h(Btn,{onClick:()=>{setShowAdd(false);setSel(null);},variant:'secondary'},('Cancel'),
-        h(Btn,{onClick:save},sel?'Update':'Save Customer'))));
+        h(Btn,{onClick:save},(sel?'Update':'Save Customer')))));
 }
 
 
@@ -867,7 +867,7 @@ function FormulatorPage(){
     const lim=getANFLimit(id,species);
     if(!lim)return'neutral';
     if(lim.maxPct===0)return'excluded';
-    if(lim.maxPct <= 5)return'caution';
+    if(lim.maxPct < 6)return'caution';
     return'neutral';
   };
   const anfStatusStyle=s=>({
@@ -1039,7 +1039,7 @@ function FormulatorPage(){
                   h('td',{style:{padding:'7px 10px',textAlign:'right',fontFamily:"'DM Mono',monospace",color:C.grass,fontWeight:700}},'KES '+row.sellPricePerKg),
                   h('td',{style:{padding:'7px 10px',textAlign:'right',fontFamily:"'DM Mono',monospace"}},'KES '+(row.sellCost).toFixed(0)),
                   h('td',{style:{padding:'7px 10px',textAlign:'right'}},
-                    h(Badge,{color:ok?C.grass:C.danger},ok?' OK':'Low')));
+                    h(Badge,{color:ok?C.grass:C.danger},(ok?' OK':'Low'))));
               })))),
           h('div',{style:{padding:'10px 14px',borderTop:'1px solid '+C.border,
             display:'flex',gap:8,justifyContent:'flex-end',flexWrap:'wrap'}},
@@ -1077,7 +1077,7 @@ function FormulatorPage(){
       selPrice&&h('div',{style:{background:'#f0f9f4',borderRadius:8,padding:'10px 14px',fontSize:13}},
         h('div',null,'Total Revenue: ',h('strong',{style:{color:C.grass}},
           'KES '+(parseFloat(selPrice)*batchKg).toFixed(2))),
-        h('div',null,'Profit: ',h('strong',{style:{color:(parseFloat(selPrice)*batchKg-pendingSale.totalCost)>=0?C.grass:C.danger}},
+        h('div',null,'Profit: ',h('strong',{style:{color:(parseFloat(selPrice)*batchKg-pendingSale.totalCost) > -1?C.grass:C.danger}},
           'KES '+(parseFloat(selPrice)*batchKg-pendingSale.totalCost).toFixed(2)))),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
         h(Btn,{onClick:()=>setShowSell(false),variant:'secondary'},('Cancel'),
@@ -1115,7 +1115,7 @@ function SalesPage(){
       h(StatCard,{label:'Total Sales',value:sales.length,icon:'',color:C.earth}),
       h(StatCard,{label:'Total Revenue',value:fmtKES(rev),icon:'',color:C.grass}),
       h(StatCard,{label:'Total Cost',value:fmtKES(cost),icon:'',color:C.warning}),
-      h(StatCard,{label:'Total Profit',value:fmtKES(profit),sub:rev?((profit/rev)*100).toFixed(1)+'% margin':'',icon:'',color:profit>=0?C.grass:C.danger})),
+      h(StatCard,{label:'Total Profit',value:fmtKES(profit),sub:rev?((profit/rev)*100).toFixed(1)+'% margin':'',icon:'',color:profit > -1?C.grass:C.danger})),
     h(Card,null,h(CardTitle,null,'All Sales'),
       h(Tbl,{cols:[
         {key:'date',label:'Date'},
@@ -1124,7 +1124,7 @@ function SalesPage(){
         {key:'batchKg',label:'Batch',render:r=>r.batchKg+' kg'},
         {key:'cost',label:'Cost',render:r=>fmtKES(r.cost||r.totalCost||0)},
         {key:'total',label:'Revenue',render:r=>h('span',{style:{fontWeight:700,color:C.grass}},fmtKES(r.total||r.totalRevenue||0))},
-        {key:'profit',label:'Profit',render:r=>h('span',{style:{color:(r.profit||0)>=0?C.grass:C.danger,fontWeight:700}},fmtKES(r.profit||0))},
+        {key:'profit',label:'Profit',render:r=>h('span',{style:{color:(r.profit||0) > -1?C.grass:C.danger,fontWeight:700}},fmtKES(r.profit||0))},
         user?.role==='admin'&&{key:'del',label:'',render:r=>h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteSale(r)},('[Delete]')},
       ].filter(Boolean),rows:sales.slice().reverse(),emptyMsg:'No sales yet.'})));
 }
@@ -1150,7 +1150,7 @@ function ReportsPage(){
   const summaryRows=[
     {label:'Gross Revenue',val:fmtKES(rev),color:C.grass},
     {label:'Feed Cost of Goods',val:fmtKES(cost),color:C.danger},
-    {label:'Gross Profit',val:fmtKES(profit),color:profit>=0?C.grass:C.danger},
+    {label:'Gross Profit',val:fmtKES(profit),color:profit > -1?C.grass:C.danger},
     {label:'Profit Margin',val:rev?((profit/rev)*100).toFixed(1)+'%':' - ',color:C.earth},
     {label:'Total Orders',val:fS.length,color:C.earth},
     {label:'Avg Order Value',val:fS.length?fmtKES(rev/fS.length):' - ',color:C.earth},
@@ -1167,7 +1167,7 @@ function ReportsPage(){
     ),
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:18}},
       h(StatCard,{label:pLabel+' Revenue',value:fmtKES(rev),color:C.grass,icon:''}),
-      h(StatCard,{label:pLabel+' Profit',value:fmtKES(profit),sub:rev?((profit/rev)*100).toFixed(1)+'% margin':'',color:profit>=0?C.grass:C.danger,icon:''}),
+      h(StatCard,{label:pLabel+' Profit',value:fmtKES(profit),sub:rev?((profit/rev)*100).toFixed(1)+'% margin':'',color:profit > -1?C.grass:C.danger,icon:''}),
       h(StatCard,{label:pLabel+' Purchases',value:fmtKES(purchCost),color:C.warning,icon:''}),
       h(StatCard,{label:pLabel+' Orders',value:fS.length,color:C.earth,icon:''})
     ),
@@ -1258,7 +1258,7 @@ function EducationPage(){
   useEffect(()=>{if(!auto)return;const t=setInterval(()=>setIdx(c=>(c+1)%tips.length),8000);return()=>clearInterval(t);},[auto,tips.length]);
   const tip=tips[idx%tips.length];
   return h('div',{style:{padding:'0 26px 26px'}},
-    h(PageHdr,{title:'Education Screen',subtitle:'Display tips on shop screens for waiting farmers',action:h(Btn,{onClick:()=>setAuto(!auto),variant:auto?'success':'secondary'},auto?' Pause':' Auto-Play')}),
+    h(PageHdr,{title:'Education Screen',subtitle:'Display tips on shop screens for waiting farmers',action:h(Btn,{onClick:()=>setAuto(!auto),variant:auto?'success':'secondary'},(auto?' Pause':' Auto-Play'))}),
     tip&&h(Card,{style:{marginBottom:18,border:`2px solid ${C.savanna}`}},
       h('div',{style:{background:`linear-gradient(135deg,${C.earth},${C.clay})`,padding:'38px 46px',textAlign:'center',minHeight:260,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
         h('div',{style:{fontSize:60,marginBottom:14}},tip.icon),
@@ -1468,7 +1468,7 @@ function NutritionPage(){
         h(RangeInp,{nut:'met', label:'Methionine',          unit:'%'})),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
         h(Btn,{onClick:()=>{setShowReqForm(false);setEditReq(null);},variant:'secondary'},('Cancel'),
-        h(Btn,{onClick:saveReq,variant:'success'},editReq?'Update Requirements':'Add Animal Stage')))));
+        h(Btn,{onClick:saveReq,variant:'success'},(editReq?'Update Requirements':'Add Animal Stage'))))));
 }
 
 //  USERS 
@@ -1526,7 +1526,7 @@ function UsersPage({currentUser}){
   const openPwd=(u)=>{setPwdUser(u);setNewPwd('');setConfirmPwd('');setCurrentPwd('');};
 
   const savePwd=()=>{
-    if(!(newPwd.length >= 6)){showT('Password must be at least 6 characters','error');return;}
+    if(!newPwd){showT('Password must be at least 6 characters','error');return;}
     if(newPwd!==confirmPwd){showT('Passwords do not match','error');return;}
     // If changing own password and not admin, verify current password
     const isOwnAccount=pwdUser.id===currentUser?.id;
@@ -1644,7 +1644,7 @@ function UsersPage({currentUser}){
         confirmPwd&&confirmPwd!==newPwd&&h('div',{style:{fontSize:11,color:C.danger,marginTop:4}},('Passwords do not match')),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
         h(Btn,{onClick:()=>setPwdUser(null),variant:'secondary'},('Cancel'),
-        h(Btn,{onClick:savePwd,variant:'success',disabled:!(newPwd.length>=6&&newPwd===confirmPwd)},('Change Password')))));
+        h(Btn,{onClick:savePwd,variant:'success',disabled:!newPwd||!confirmPwd||newPwd!==confirmPwd},('Change Password')))));
 }
 
 function TraceabilityPage(){
