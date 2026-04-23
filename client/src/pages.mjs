@@ -8,7 +8,7 @@ import {
   CATEGORY_META, CATEGORY_ICONS, FEEDING_QTY, TIPS, SPECIES_RECS,
   getAnimalReqs, getAnimalCategories, buildSpeciesList, getStagesForCategory, getReqForStage
 } from "./constants.js";
-import { solveLeastCost, solveLeastCostLP, solveBestEffort, assessNutrientGaps, calcNutrients, calcCost } from "./solver.js";
+import { solveLeastCost, solveLeastCostLP, solveBestEffort, suggestIngredientsToBuy, assessNutrientGaps, calcNutrients, calcCost } from "./solver.js";
 
 const h = React.createElement;
 
@@ -28,19 +28,19 @@ async function serverPush(col, data) {
 
 // Navigation config
 const NAV = [
-  { key: 'dashboard', icon: 'D', label: 'Dashboard' },
-  { key: 'formulator', icon: 'F', label: 'Feed Formulator' },
-  { key: 'inventory', icon: 'I', label: 'Inventory' },
-  { key: 'customers', icon: 'C', label: 'Customers' },
-  { key: 'sales', icon: 'S', label: 'Sales' },
-  { key: 'reports', icon: 'R', label: 'Reports' },
-  { key: 'feeding_guide', icon: 'G', label: 'Feeding Guide' },
-  { key: 'education', icon: 'E', label: 'Education' },
-  { key: 'resources', icon: 'X', label: 'Resources' },
-  { key: 'traceability', icon: 'T', label: 'Traceability Log', admin: true },
-  { key: 'ingredients', icon: 'N', label: 'Ingredients', admin: true },
-  { key: 'nutrition', icon: 'U', label: 'Nutritional Reqs', admin: true },
-  { key: 'users', icon: 'Y', label: 'Users', admin: true },
+  { key: 'dashboard', icon: '\u{1F4CA}', label: 'Dashboard' },
+  { key: 'formulator', icon: '\u{1F9EA}', label: 'Feed Formulator' },
+  { key: 'inventory', icon: '\u{1F4E6}', label: 'Inventory' },
+  { key: 'customers', icon: '\u{1F465}', label: 'Customers' },
+  { key: 'sales', icon: '\u{1F4B0}', label: 'Sales' },
+  { key: 'reports', icon: '\u{1F4C8}', label: 'Reports' },
+  { key: 'feeding_guide', icon: '\u{1F33E}', label: 'Feeding Guide' },
+  { key: 'education', icon: '\u{1F4D6}', label: 'Education' },
+  { key: 'resources', icon: '\u{1F4CB}', label: 'Resources' },
+  { key: 'traceability', icon: '\u{1F50D}', label: 'Traceability Log', admin: true },
+  { key: 'ingredients', icon: '\u{1F33D}', label: 'Ingredients', admin: true },
+  { key: 'nutrition', icon: '\u{2697}', label: 'Nutritional Reqs', admin: true },
+  { key: 'users', icon: '\u{1F464}', label: 'Users', admin: true },
 ];
 
 // Anti-nutritive factor limits - abbreviated for brevity in this rewrite
@@ -173,13 +173,17 @@ function checkANFWarnings(formula, ingredients, species) {
 function Btn(props) {
   const size = props.size || 'md';
   const variant = props.variant || 'primary';
-  const sizeMap = { sm: { padding: '6px 11px', fontSize: 12 }, md: { padding: '9px 15px', fontSize: 13 }, lg: { padding: '12px 20px', fontSize: 14 } };
+  const sizeMap = {
+    sm: { padding: '7px 13px', fontSize: 12 },
+    md: { padding: '10px 17px', fontSize: 13 },
+    lg: { padding: '13px 22px', fontSize: 14 }
+  };
   const variantMap = {
-    primary: { bg: C.earth, color: 'white', b: C.earth },
-    secondary: { bg: 'white', color: C.earth, b: C.border },
-    success: { bg: C.grass, color: 'white', b: C.grass },
-    danger: { bg: C.danger, color: 'white', b: C.danger },
-    warn: { bg: C.warning, color: 'white', b: C.warning },
+    primary: { bg: C.earth, color: 'white', b: C.earth, shadow: '0 2px 6px rgba(61,43,31,0.2)' },
+    secondary: { bg: 'white', color: C.earth, b: C.border, shadow: '0 1px 3px rgba(0,0,0,0.06)' },
+    success: { bg: C.grass, color: 'white', b: C.grass, shadow: '0 2px 6px rgba(74,124,89,0.25)' },
+    danger: { bg: C.danger, color: 'white', b: C.danger, shadow: '0 2px 6px rgba(192,57,43,0.25)' },
+    warn: { bg: C.warning, color: 'white', b: C.warning, shadow: '0 2px 6px rgba(230,126,34,0.25)' },
   };
   const s = sizeMap[size];
   const v = variantMap[variant];
@@ -195,6 +199,8 @@ function Btn(props) {
     opacity: props.disabled ? 0.5 : 1,
     fontFamily: "'DM Sans', sans-serif",
     whiteSpace: 'nowrap',
+    boxShadow: props.disabled ? 'none' : v.shadow,
+    transition: 'all 0.15s ease'
   }, props.style || {});
   return h('button', { onClick: props.onClick, disabled: props.disabled, style: style }, props.children);
 }
@@ -206,13 +212,34 @@ function Badge(props) {
 }
 
 function Card(props) {
-  const style = Object.assign({ background: 'white', border: '1px solid ' + C.border, borderRadius: 14, overflow: 'hidden', marginBottom: 14 }, props.style || {});
+  const style = Object.assign({
+    background: 'white',
+    border: '1px solid ' + C.border,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 14,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+  }, props.style || {});
   return h('div', { style: style }, props.children);
 }
 
 function CardTitle(props) {
-  const style = { background: C.parchment, padding: '11px 17px', borderBottom: '1px solid ' + C.border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' };
-  const titleStyle = { fontFamily: "'DM Mono',monospace", fontSize: 10, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', color: C.soil };
+  const style = {
+    background: 'linear-gradient(to right, ' + C.parchment + ', ' + C.cream + ')',
+    padding: '12px 18px',
+    borderBottom: '1px solid ' + C.border,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  };
+  const titleStyle = {
+    fontFamily: "'DM Mono',monospace",
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+    color: C.soil
+  };
   return h('div', { style: style },
     h('span', { style: titleStyle }, props.children),
     props.action || null
@@ -259,14 +286,49 @@ function Sel(props) {
 
 function StatCard(props) {
   const color = props.color || C.earth;
-  const style = { background: 'white', border: '1px solid ' + C.border, borderLeft: '4px solid ' + color, borderRadius: 12, padding: '12px 15px' };
+  const style = {
+    background: 'white',
+    border: '1px solid ' + C.border,
+    borderLeft: '4px solid ' + color,
+    borderRadius: 12,
+    padding: '14px 17px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+    transition: 'all 0.2s',
+    position: 'relative',
+    overflow: 'hidden'
+  };
+  const iconStyle = {
+    position: 'absolute',
+    right: 14,
+    top: 14,
+    fontSize: 26,
+    opacity: 0.22
+  };
   return h('div', { style: style },
-    h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 } },
-      props.icon ? h('span', { style: { fontSize: 16 } }, props.icon) : null,
-      h('span', { style: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: C.muted } }, props.label)
-    ),
-    h('div', { style: { fontSize: 22, fontFamily: "'Playfair Display',serif", fontWeight: 900, color: color } }, props.value),
-    props.sub ? h('div', { style: { fontSize: 11, color: C.muted, marginTop: 2 } }, props.sub) : null
+    props.icon ? h('div', { style: iconStyle }, props.icon) : null,
+    h('div', {
+      style: {
+        fontSize: 10,
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: 1.5,
+        color: C.muted,
+        marginBottom: 6,
+        fontFamily: "'DM Mono',monospace"
+      }
+    }, props.label),
+    h('div', {
+      style: {
+        fontSize: 24,
+        fontFamily: "'Playfair Display',serif",
+        fontWeight: 900,
+        color: color,
+        lineHeight: 1
+      }
+    }, props.value),
+    props.sub ? h('div', {
+      style: { fontSize: 11, color: C.muted, marginTop: 4, fontWeight: 600 }
+    }, props.sub) : null
   );
 }
 
@@ -295,11 +357,32 @@ function Toast(props) {
 }
 
 function PageHdr(props) {
-  const style = { padding: '22px 26px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 };
+  const style = {
+    padding: '22px 26px 18px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+    borderBottom: '3px solid ' + C.parchment,
+    marginBottom: 18,
+    background: 'linear-gradient(to bottom, ' + C.cream + ' 0%, transparent 100%)'
+  };
   return h('div', { style: style },
     h('div', null,
-      h('div', { style: { fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 900, color: C.earth, lineHeight: 1.1 } }, props.title),
-      props.subtitle ? h('div', { style: { fontSize: 13, color: C.muted, marginTop: 4 } }, props.subtitle) : null
+      h('div', {
+        style: {
+          fontFamily: "'Playfair Display',serif",
+          fontSize: 28,
+          fontWeight: 900,
+          color: C.earth,
+          lineHeight: 1.1,
+          letterSpacing: '-0.5px'
+        }
+      }, props.title),
+      props.subtitle ? h('div', {
+        style: { fontSize: 13, color: C.muted, marginTop: 5, fontStyle: 'italic' }
+      }, props.subtitle) : null
     ),
     props.action || null
   );
@@ -429,8 +512,9 @@ function LoginPage(props) {
     : (view === 'newpass') ? 'New Password' : '';
 
   const header = h('div', { style: { textAlign: 'center', marginBottom: 28 } },
-    h('div', { style: { fontFamily: "'Playfair Display',serif", fontSize: 28, fontWeight: 900, color: C.earth, lineHeight: 1.1 } }, 'Wa-Mifugo'),
-    h('div', { style: { fontFamily: "'DM Mono',monospace", fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: 'uppercase', marginTop: 4 } }, 'Feeds Management System'),
+    h('div', { style: { fontSize: 46, marginBottom: 8 } }, '\u{1F33E}'),
+    h('div', { style: { fontFamily: "'Playfair Display',serif", fontSize: 32, fontWeight: 900, color: C.earth, lineHeight: 1.1 } }, 'Wa-Mifugo'),
+    h('div', { style: { fontFamily: "'DM Mono',monospace", fontSize: 10, color: C.muted, letterSpacing: 2.5, textTransform: 'uppercase', marginTop: 6 } }, 'Feeds Management System'),
     (view !== 'login') ? h('div', { style: { marginTop: 10, fontSize: 13, color: C.soil, fontWeight: 600 } }, headerTitle) : null
   );
 
@@ -564,9 +648,12 @@ function Sidebar(props) {
   };
 
   return h('div', { className: 'wm-sidebar' + (props.isOpen ? ' open' : ''), style: sidebarStyle },
-    h('div', { style: { padding: '18px 15px 14px', borderBottom: '1px solid rgba(255,255,255,0.1)' } },
-      h('div', { style: { fontFamily: "'Playfair Display',serif", fontSize: 21, fontWeight: 900, color: 'white', lineHeight: 1 } }, 'Wa-Mifugo'),
-      h('div', { style: { fontFamily: "'DM Mono',monospace", fontSize: 9, color: C.harvest, letterSpacing: 2, textTransform: 'uppercase', marginTop: 4 } }, 'Feeds Management')
+    h('div', { style: { padding: '20px 15px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)' } },
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 } },
+        h('span', { style: { fontSize: 24 } }, '\u{1F33E}'),
+        h('div', { style: { fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 900, color: 'white', lineHeight: 1 } }, 'Wa-Mifugo')
+      ),
+      h('div', { style: { fontFamily: "'DM Mono',monospace", fontSize: 9, color: C.harvest, letterSpacing: 2.5, textTransform: 'uppercase', marginTop: 6 } }, 'Feeds Management')
     ),
     h('nav', { style: { flex: 1, padding: '8px 7px' } }, buttons),
     h('div', { style: { padding: '13px 15px', borderTop: '1px solid rgba(255,255,255,0.1)' } },
@@ -605,14 +692,14 @@ function DashboardPage() {
   const profitSub = rev ? ((profit / rev) * 100).toFixed(1) + '% margin' : '';
 
   return h('div', { style: { padding: '0 26px 26px' } },
-    h(PageHdr, { title: 'Dashboard', subtitle: 'Overview of your feed business (last 30 days)' }),
+    h(PageHdr, { title: '\u{1F4CA} Dashboard', subtitle: 'Overview of your feed business (last 30 days)' }),
     h('div', { style: statStyle },
-      h(StatCard, { label: 'Revenue (30d)', value: fmtKES(rev), color: C.grass, icon: '$' }),
-      h(StatCard, { label: 'Profit (30d)', value: fmtKES(profit), sub: profitSub, color: profitColor, icon: '%' }),
-      h(StatCard, { label: 'Sales Count', value: monthSales.length, color: C.earth, icon: '#' }),
-      h(StatCard, { label: 'Stock Value', value: fmtKES(stockValue), color: C.clay, icon: 'S' }),
-      h(StatCard, { label: 'Customers', value: customers.length, color: C.soil, icon: 'C' }),
-      h(StatCard, { label: 'Low Stock Items', value: lowStock.length, color: C.danger, icon: '!' })
+      h(StatCard, { label: 'Revenue (30d)', value: fmtKES(rev), color: C.grass, icon: '\u{1F4B0}' }),
+      h(StatCard, { label: 'Profit (30d)', value: fmtKES(profit), sub: profitSub, color: profitColor, icon: '\u{1F4C8}' }),
+      h(StatCard, { label: 'Sales Count', value: monthSales.length, color: C.earth, icon: '\u{1F6D2}' }),
+      h(StatCard, { label: 'Stock Value', value: fmtKES(stockValue), color: C.clay, icon: '\u{1F4E6}' }),
+      h(StatCard, { label: 'Customers', value: customers.length, color: C.soil, icon: '\u{1F465}' }),
+      h(StatCard, { label: 'Low Stock Items', value: lowStock.length, color: C.danger, icon: '\u{26A0}' })
     ),
     lowStock.length > 0 ? h(Card, null,
       h(CardTitle, null, 'Low Stock Alert'),
@@ -881,7 +968,7 @@ function InventoryPage() {
   return h('div', { style: { padding: '0 26px 26px' } },
     toast ? h(Toast, { msg: toast.msg, type: toast.type }) : null,
     h(PageHdr, {
-      title: 'Inventory Management',
+      title: '\u{1F4E6} Inventory Management',
       subtitle: 'Track stock levels, prices, and purchase records',
       action: h(Btn, { onClick: function() { setShowAdd(true); }, variant: 'success' }, '+ Add Stock')
     }),
@@ -1016,7 +1103,7 @@ function IngredientsPage() {
 
   return h('div', { style: { padding: '0 26px 26px' } },
     h(PageHdr, {
-      title: 'Ingredients',
+      title: '\u{1F33D} Ingredients',
       subtitle: 'Manage ingredient nutritional profiles',
       action: h(Btn, { onClick: openAdd, variant: 'success' }, '+ Add Ingredient')
     }),
@@ -1091,7 +1178,7 @@ function CustomersPage() {
 
   return h('div', { style: { padding: '0 26px 26px' } },
     h(PageHdr, {
-      title: 'Customers',
+      title: '\u{1F465} Customers',
       subtitle: 'Customer directory and contact records',
       action: h(Btn, { onClick: openAdd, variant: 'success' }, '+ New Customer')
     }),
@@ -1135,6 +1222,7 @@ function FormulatorPage() {
   const [loading, setLoading] = useState(false);
   const [anfWarnings, setAnfWarnings] = useState([]);
   const [anfExclusions, setAnfExclusions] = useState([]);
+  const [buySuggestions, setBuySuggestions] = useState([]);
 
   function showT(msg, type) {
     setToast({ msg: msg, type: type || 'success' });
@@ -1188,11 +1276,11 @@ function FormulatorPage() {
     setSelIngrs(n);
   }
 
-  // Auto-solve effect
+  // Auto-solve on species/stage/selection change
   useEffect(function() {
     if (!species || !stage) return;
     setFormula(null); setNutrients(null); setCostPKg(0);
-    setAnfWarnings([]); setAnfExclusions([]);
+    setAnfWarnings([]); setAnfExclusions([]); setBuySuggestions([]);
     setLoading(true);
     const timer = setTimeout(function() {
       const ingrs = getActiveWithANF();
@@ -1217,6 +1305,13 @@ function FormulatorPage() {
         });
         setAnfWarnings(anfResult.warnings.concat(solverWarnings));
         setAnfExclusions(anfResult.exclusions);
+        // Generate buy suggestions if there are gaps
+        if (result.gaps && Object.keys(result.gaps).length > 0) {
+          const sugg = suggestIngredientsToBuy(result.gaps, ingredients, selIngrs);
+          setBuySuggestions(sugg);
+        } else {
+          setBuySuggestions([]);
+        }
       } else {
         showT('Could not solve. Check inventory stock.', 'error');
       }
@@ -1245,6 +1340,12 @@ function FormulatorPage() {
         });
         setAnfWarnings(anfResult.warnings.concat(solverWarnings));
         setAnfExclusions(anfResult.exclusions);
+        if (result.gaps && Object.keys(result.gaps).length > 0) {
+          const sugg = suggestIngredientsToBuy(result.gaps, ingredients, selIngrs);
+          setBuySuggestions(sugg);
+        } else {
+          setBuySuggestions([]);
+        }
       } else {
         showT('Could not solve. Select more ingredients.', 'error');
       }
@@ -1334,7 +1435,7 @@ function FormulatorPage() {
     const lim = getANFLimit(id, species);
     if (!lim) return 'neutral';
     if (lim.maxPct === 0) return 'excluded';
-    if (lim.maxPct <= 5) return 'caution';
+    if (lim.maxPct < 6) return 'caution';
     return 'neutral';
   }
 
@@ -1368,14 +1469,33 @@ function FormulatorPage() {
     const inRange = !p.req || p.val >= p.req[0] * 0.97;
     const over = p.req && p.val > p.req[1] * 1.05;
     const color = over ? C.warning : inRange ? C.grass : C.danger;
+    const statusIcon = over ? '\u{26A0}' : inRange ? '\u{2713}' : '\u{2717}';
     return h('div', {
-      style: { display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid ' + C.border, fontSize: 12 }
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '10px 0',
+        borderBottom: '1px solid ' + C.border,
+        fontSize: 13
+      }
     },
-      h('span', { style: { color: C.muted } }, p.label),
-      h('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-        p.req ? h('span', { style: { fontSize: 10, color: C.muted } }, p.req[0] + '-' + p.req[1] + p.unit) : null,
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+        h('span', { style: { fontSize: 14 } }, statusIcon),
+        h('span', { style: { color: C.ink, fontWeight: 600 } }, p.label)
+      ),
+      h('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
+        p.req ? h('span', {
+          style: { fontSize: 11, color: C.muted, fontFamily: "'DM Mono',monospace" }
+        }, 'target ' + p.req[0] + '-' + p.req[1]) : null,
         h('span', {
-          style: { fontFamily: "'DM Mono',monospace", fontWeight: 700, color: color }
+          style: {
+            fontFamily: "'DM Mono',monospace",
+            fontWeight: 700,
+            color: color,
+            minWidth: 75,
+            textAlign: 'right'
+          }
         }, v + ' ' + p.unit)
       )
     );
@@ -1391,27 +1511,35 @@ function FormulatorPage() {
       ? { border: '2px solid ' + C.grass, background: '#f0f9f4' }
       : Object.assign({}, anfStatusStyle(anfStat), { opacity: hasStock ? 1 : 0.45 });
     const cardStyle = Object.assign({
-      padding: '7px 9px', borderRadius: 8, cursor: 'pointer', userSelect: 'none',
-      transition: 'all 0.15s', position: 'relative'
+      padding: '9px 11px',
+      borderRadius: 10,
+      cursor: hasStock ? 'pointer' : 'not-allowed',
+      userSelect: 'none',
+      transition: 'all 0.15s',
+      position: 'relative'
     }, baseStyle);
     const indicator = sel ? h('div', {
-      style: { position: 'absolute', top: 3, right: 5, fontSize: 10, color: C.grass, fontWeight: 700 }
-    }, 'OK') : anfStat === 'excluded' ? h('div', {
-      style: { position: 'absolute', top: 3, right: 5, fontSize: 10, color: C.danger }
-    }, 'X') : anfStat === 'caution' ? h('div', {
-      style: { position: 'absolute', top: 3, right: 5, fontSize: 10 }
+      style: { position: 'absolute', top: 5, right: 7, fontSize: 11, color: C.grass, fontWeight: 700 }
+    }, '\u{2713}') : anfStat === 'excluded' ? h('div', {
+      style: { position: 'absolute', top: 5, right: 7, fontSize: 11, color: C.danger, fontWeight: 700 }
+    }, '\u{2717}') : anfStat === 'caution' ? h('div', {
+      style: { position: 'absolute', top: 5, right: 7, fontSize: 11, color: C.warning, fontWeight: 700 }
     }, '!') : null;
     const stockText = hasStock
-      ? fmt(inv.qty) + ' kg * KES ' + getSellPriceForIng(ing) + '/kg'
-      : 'No stock';
+      ? fmt(inv.qty) + ' kg  \u{2022}  KES ' + getSellPriceForIng(ing) + '/kg'
+      : 'Out of stock';
     return h('div', {
       key: ing.id,
-      onClick: function() { toggleI(ing.id); },
+      onClick: function() { if (hasStock) toggleI(ing.id); },
       style: cardStyle
     },
       indicator,
-      h('div', { style: { fontSize: 11, fontWeight: 600, color: C.earth, lineHeight: 1.3 } }, ing.name),
-      h('div', { style: { fontSize: 10, color: C.muted, marginTop: 2 } }, stockText)
+      h('div', {
+        style: { fontSize: 12, fontWeight: 600, color: C.earth, lineHeight: 1.3, marginRight: 18 }
+      }, ing.name),
+      h('div', {
+        style: { fontSize: 10, color: C.muted, marginTop: 3, fontFamily: "'DM Mono',monospace" }
+      }, stockText)
     );
   });
 
@@ -1433,14 +1561,14 @@ function FormulatorPage() {
     width: 480
   },
     h('div', {
-      style: { background: C.parchment, borderRadius: 8, padding: '11px 14px', marginBottom: 14 }
+      style: { background: C.parchment, borderRadius: 10, padding: '12px 16px', marginBottom: 14 }
     },
       h('div', {
-        style: { fontWeight: 700, color: C.earth, marginBottom: 6 }
-      }, species + ' - ' + stage + ' (' + batchKg + 'kg)'),
+        style: { fontWeight: 700, color: C.earth, marginBottom: 6, fontFamily: "'Playfair Display',serif", fontSize: 16 }
+      }, species + ' \u{2022} ' + stage + ' \u{2022} ' + batchKg + 'kg'),
       h('div', { style: { fontSize: 13, color: C.muted } },
         'Cost of ingredients: ',
-        h('strong', { style: { color: C.danger } }, 'KES ' + pendingSale.totalCost.toFixed(2))
+        h('strong', { style: { color: C.danger, fontFamily: "'DM Mono',monospace" } }, 'KES ' + pendingSale.totalCost.toFixed(2))
       )
     ),
     h(Inp, {
@@ -1451,16 +1579,19 @@ function FormulatorPage() {
       placeholder: 'e.g. 65'
     }),
     selPrice ? h('div', {
-      style: { background: '#f0f9f4', borderRadius: 8, padding: '10px 14px', fontSize: 13 }
+      style: { background: '#f0f9f4', borderRadius: 10, padding: '12px 16px', fontSize: 13, border: '1px solid ' + C.leaf + '44' }
     },
-      h('div', null,
+      h('div', { style: { marginBottom: 6 } },
         'Total Revenue: ',
-        h('strong', { style: { color: C.grass } }, 'KES ' + (parseFloat(selPrice) * batchKg).toFixed(2))
+        h('strong', { style: { color: C.grass, fontFamily: "'DM Mono',monospace" } }, 'KES ' + (parseFloat(selPrice) * batchKg).toFixed(2))
       ),
       h('div', null,
         'Profit: ',
         h('strong', {
-          style: { color: (parseFloat(selPrice) * batchKg - pendingSale.totalCost) > -1 ? C.grass : C.danger }
+          style: {
+            color: (parseFloat(selPrice) * batchKg - pendingSale.totalCost) > -1 ? C.grass : C.danger,
+            fontFamily: "'DM Mono',monospace"
+          }
         }, 'KES ' + (parseFloat(selPrice) * batchKg - pendingSale.totalCost).toFixed(2))
       )
     ) : null,
@@ -1470,29 +1601,30 @@ function FormulatorPage() {
         onClick: doConfirmSale,
         variant: 'success',
         disabled: !selPrice || !Number(selPrice)
-      }, 'Customer Agreed - Record Sale')
+      }, '\u{2713} Customer Agreed - Record Sale')
     )
   ) : null;
 
   // Quality badge
   const qualityLabels = {
-    optimal: 'Optimal solution',
-    good: 'Good solution',
-    relaxed: 'Approximated',
-    partial: 'Partial',
-    fallback: 'Fallback mix'
+    optimal: '\u{2713} Optimal - all nutrients met',
+    good: '\u{2713} Good - minor gaps',
+    partial: '\u{26A0} Partial - some nutrients short',
+    fallback: '\u{26A0} Fallback mix'
   };
   const qualityColors = {
     optimal: { bg: '#f0f9f4', color: C.grass, border: C.leaf },
     good: { bg: '#f0f9f4', color: C.grass, border: C.leaf },
-    relaxed: { bg: '#fff8e6', color: C.savanna, border: C.harvest },
     partial: { bg: '#fff8e6', color: C.savanna, border: C.harvest },
-    fallback: { bg: '#fff8e6', color: C.savanna, border: C.harvest }
+    fallback: { bg: '#fde8e8', color: C.danger, border: C.danger }
   };
 
   const qBadge = (formula && solveQuality) ? h('span', {
     style: Object.assign({
-      fontSize: 11, padding: '3px 10px', borderRadius: 12
+      fontSize: 12,
+      padding: '6px 14px',
+      borderRadius: 20,
+      fontWeight: 600
     }, {
       background: qualityColors[solveQuality].bg,
       color: qualityColors[solveQuality].color,
@@ -1501,17 +1633,23 @@ function FormulatorPage() {
   }, qualityLabels[solveQuality] || solveQuality) : null;
 
   // ANF warnings display
-  const anfDisplay = (anfWarnings.length > 0 || anfExclusions.length > 0) ? h(Card, { style: { marginBottom: 12 } },
-    h('div', { style: { padding: '10px 14px' } },
+  const anfDisplay = (anfWarnings.length > 0 || anfExclusions.length > 0) ? h(Card, { style: { marginBottom: 14 } },
+    h(CardTitle, null, '\u{26A0} Anti-Nutritional & Nutrient Warnings'),
+    h('div', { style: { padding: '12px 16px' } },
       anfExclusions.map(function(e, i) {
         return h('div', {
           key: 'ex' + i,
-          style: { display: 'flex', gap: 8, padding: '7px 10px', borderRadius: 7, background: '#fde8e8', border: '1px solid ' + C.danger + '44', marginBottom: 5 }
+          style: {
+            display: 'flex', gap: 10, padding: '10px 12px', borderRadius: 8,
+            background: '#fde8e8', border: '1px solid ' + C.danger + '44', marginBottom: 8
+          }
         },
-          h('span', null, 'X'),
+          h('span', { style: { fontSize: 18 } }, '\u{2717}'),
           h('div', null,
-            h('div', { style: { fontWeight: 700, fontSize: 12, color: C.danger } }, e.ingredient + ' EXCLUDED - ' + e.factor),
-            h('div', { style: { fontSize: 11, color: C.muted } }, e.note)
+            h('div', {
+              style: { fontWeight: 700, fontSize: 13, color: C.danger, marginBottom: 3 }
+            }, e.ingredient + ' EXCLUDED - ' + e.factor),
+            h('div', { style: { fontSize: 12, color: C.muted, lineHeight: 1.5 } }, e.note)
           )
         );
       }),
@@ -1520,65 +1658,155 @@ function FormulatorPage() {
         return h('div', {
           key: 'w' + i,
           style: {
-            display: 'flex', gap: 8, padding: '7px 10px', borderRadius: 7, marginBottom: 4,
+            display: 'flex', gap: 10, padding: '10px 12px', borderRadius: 8, marginBottom: 6,
             background: sev ? '#fde8e8' : '#fff8e6',
             border: '1px solid ' + (sev ? C.danger : C.harvest) + '44'
           }
         },
-          h('span', null, sev ? 'X' : '!'),
+          h('span', { style: { fontSize: 18 } }, sev ? '\u{2717}' : '\u{26A0}'),
           h('div', null,
             h('div', {
-              style: { fontWeight: 700, fontSize: 12, color: sev ? C.danger : C.savanna }
+              style: { fontWeight: 700, fontSize: 13, color: sev ? C.danger : C.savanna, marginBottom: 3 }
             }, w.ingredient + (w.factor ? ' - ' + w.factor : '') + (w.current ? ' at ' + w.current + '% (limit: ' + w.maxPct + '%)' : '')),
-            h('div', { style: { fontSize: 11, color: C.muted } }, w.note)
+            h('div', { style: { fontSize: 12, color: C.muted, lineHeight: 1.5 } }, w.note)
           )
         );
       })
     )
   ) : null;
 
-  const formulaCard = (formula && nutrients) ? h(Card, { style: { marginBottom: 12 } },
+  // "What to buy" suggestions card
+  const buySuggestionsCard = buySuggestions.length > 0 ? h(Card, { style: { marginBottom: 14, border: '2px solid ' + C.savanna } },
     h('div', {
-      style: { background: 'linear-gradient(135deg,' + C.earth + ',' + C.soil + ')', padding: '13px 17px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+      style: {
+        background: 'linear-gradient(135deg,' + C.savanna + ',' + C.harvest + ')',
+        padding: '14px 18px',
+        color: 'white'
+      }
+    },
+      h('div', {
+        style: { fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 700, marginBottom: 3 }
+      }, '\u{1F4A1} Recommended Ingredients to Purchase'),
+      h('div', {
+        style: { fontSize: 12, opacity: 0.9 }
+      }, 'Adding these will help meet the nutritional gaps in your current stock')
+    ),
+    h('div', { style: { padding: '14px 18px' } },
+      buySuggestions.map(function(s, i) {
+        return h('div', {
+          key: i,
+          style: { marginBottom: i < buySuggestions.length - 1 ? 16 : 0 }
+        },
+          h('div', {
+            style: {
+              fontSize: 12,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: 1,
+              color: C.soil,
+              marginBottom: 8,
+              fontFamily: "'DM Mono',monospace"
+            }
+          }, 'To boost ' + s.nutrientLabel + ' (short by ' + s.shortfall.toFixed(2) + ')'),
+          h('div', {
+            style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 10 }
+          },
+            s.candidates.map(function(c, ci) {
+              return h('div', {
+                key: ci,
+                style: {
+                  background: C.cream,
+                  border: '1px solid ' + C.border,
+                  borderRadius: 10,
+                  padding: '10px 12px'
+                }
+              },
+                h('div', {
+                  style: { fontSize: 13, fontWeight: 700, color: C.earth, marginBottom: 4 }
+                }, c.ingredient.name),
+                h('div', {
+                  style: { fontSize: 11, color: C.muted, fontFamily: "'DM Mono',monospace" }
+                }, s.nutrientLabel + ': ' + c.nutrientValue.toFixed(1) +
+                   (c.price > 0 ? ' \u{2022} ~KES ' + c.price + '/kg' : ''))
+              );
+            })
+          )
+        );
+      })
+    )
+  ) : null;
+
+  const formulaCard = (formula && nutrients) ? h(Card, { style: { marginBottom: 14 } },
+    h('div', {
+      style: {
+        background: 'linear-gradient(135deg,' + C.earth + ',' + C.soil + ')',
+        padding: '16px 20px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }
     },
       h('div', null,
-        h('div', { style: { fontFamily: "'Playfair Display',serif", fontSize: 15, color: 'white', fontWeight: 700 } }, species + ' - ' + stage),
-        h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 } }, batchKg + 'kg batch')
+        h('div', {
+          style: { fontFamily: "'Playfair Display',serif", fontSize: 18, color: 'white', fontWeight: 700 }
+        }, species + ' \u{2022} ' + stage),
+        h('div', {
+          style: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 3 }
+        }, batchKg + 'kg batch \u{2022} ' + formulaRows.length + ' ingredients')
       ),
       h('div', { style: { textAlign: 'right' } },
-        h('div', { style: { fontSize: 22, fontFamily: "'Playfair Display',serif", fontWeight: 900, color: C.harvest } }, 'KES ' + costPKg.toFixed(2) + '/kg'),
-        h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.6)' } }, 'Total: KES ' + (costPKg * batchKg).toFixed(0))
+        h('div', {
+          style: { fontSize: 26, fontFamily: "'Playfair Display',serif", fontWeight: 900, color: C.harvest }
+        }, 'KES ' + costPKg.toFixed(2) + '/kg'),
+        h('div', {
+          style: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: "'DM Mono',monospace" }
+        }, 'Batch total: KES ' + (costPKg * batchKg).toFixed(0))
       )
     ),
     h(Tbl, {
       cols: [
         { key: 'name', label: 'Ingredient' },
-        { key: 'dpct', label: '%', render: function(r) { return r.dpct + '%'; } },
-        { key: 'qty', label: 'Qty (kg)', render: function(r) { return r.qty.toFixed(1); } },
-        { key: 'sellPricePerKg', label: 'Sell KES/kg', render: function(r) {
-          return h('span', { style: { color: C.grass, fontWeight: 700 } }, 'KES ' + r.sellPricePerKg);
+        { key: 'dpct', label: '%', render: function(r) {
+          return h('span', { style: { fontFamily: "'DM Mono',monospace", fontWeight: 700 } }, r.dpct + '%');
         }},
-        { key: 'sellCost', label: 'Sell Cost', render: function(r) { return 'KES ' + r.sellCost.toFixed(0); } },
-        { key: 'stock', label: 'In Stock', render: function(r) {
+        { key: 'qty', label: 'Qty (kg)', render: function(r) {
+          return h('span', { style: { fontFamily: "'DM Mono',monospace" } }, r.qty.toFixed(1));
+        }},
+        { key: 'sellPricePerKg', label: 'Price/kg', render: function(r) {
+          return h('span', {
+            style: { color: C.grass, fontWeight: 700, fontFamily: "'DM Mono',monospace" }
+          }, 'KES ' + r.sellPricePerKg);
+        }},
+        { key: 'sellCost', label: 'Subtotal', render: function(r) {
+          return h('span', { style: { fontFamily: "'DM Mono',monospace", fontWeight: 600 } }, 'KES ' + r.sellCost.toFixed(0));
+        }},
+        { key: 'stock', label: 'Stock', render: function(r) {
           const inv = inventory.find(function(x) { return x.id === r.id; });
           const ok = inv && inv.qty >= r.qty;
-          return h(Badge, { color: ok ? C.grass : C.danger }, ok ? 'OK' : 'Low');
+          return h(Badge, { color: ok ? C.grass : C.danger }, ok ? '\u{2713} OK' : '\u{2717} Low');
         }}
       ],
       rows: formulaRows,
       emptyMsg: ''
     }),
     h('div', {
-      style: { padding: '10px 14px', borderTop: '1px solid ' + C.border, display: 'flex', gap: 8, justifyContent: 'flex-end' }
+      style: {
+        padding: '14px 18px',
+        borderTop: '1px solid ' + C.border,
+        display: 'flex',
+        gap: 10,
+        justifyContent: 'flex-end',
+        background: C.parchment
+      }
     },
-      h(Btn, { onClick: function() { setShowSave(true); }, variant: 'secondary', size: 'sm' }, 'Save Formula'),
-      h(Btn, { onClick: doInitSale, variant: 'success', size: 'sm' }, 'Sell This Batch')
+      h(Btn, { onClick: function() { setShowSave(true); }, variant: 'secondary' }, '\u{1F4BE} Save Formula'),
+      h(Btn, { onClick: doInitSale, variant: 'success' }, '\u{1F4B0} Sell This Batch')
     )
   ) : null;
 
   const nutrientCard = (formula && nutrients && reqs) ? h(Card, null,
-    h(CardTitle, null, 'Nutritional Analysis'),
-    h('div', { style: { padding: '0 14px 14px' } },
+    h(CardTitle, null, '\u{1F4CA} Nutritional Analysis'),
+    h('div', { style: { padding: '8px 18px 14px' } },
       h(NutRow, { label: 'Crude Protein', val: nutrients.cp, req: reqs.cp, unit: '%' }),
       h(NutRow, { label: 'Metabolisable Energy', val: nutrients.me, req: reqs.me, unit: 'kcal/kg' }),
       h(NutRow, { label: 'Crude Fat', val: nutrients.fat, req: reqs.fat, unit: '%' }),
@@ -1595,115 +1823,105 @@ function FormulatorPage() {
     saveModal,
     sellModal,
     h(PageHdr, {
-      title: 'Feed Formulator',
-      subtitle: 'Auto-optimising least-cost formulation with ANF awareness'
+      title: '\u{1F9EA} Feed Formulator',
+      subtitle: 'Nutrition-first optimisation - meet animal requirements at lowest cost'
     }),
-    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 } },
-      // Left column
-      h('div', null,
-        h(Card, { style: { marginBottom: 12 } },
-          h(CardTitle, null, '1 - Animal'),
-          h('div', {
-            style: { padding: '0 14px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }
-          },
-            h(Sel, {
-              label: 'Species',
-              value: species,
-              onChange: function(v) { setSpecies(v); setStage(''); setFormula(null); },
-              options: [{ value: '', label: 'Select species...' }].concat(
-                speciesList.map(function(s) { return { value: s.value, label: s.icon + ' ' + s.label }; })
-              )
-            }),
-            h(Sel, {
-              label: 'Stage',
-              value: stage,
-              onChange: function(v) { setStage(v); setFormula(null); },
-              options: [{ value: '', label: 'Select stage...' }].concat(
-                stages.map(function(s) { return { value: s, label: s }; })
-              ),
-              disabled: !species
-            }),
-            h(Inp, { label: 'Batch Size (kg)', value: batchKg, onChange: function(v) { setBatchKg(parseFloat(v) || 100); }, type: 'number' }),
-            h(Sel, {
-              label: 'Customer (optional)',
-              value: custId,
-              onChange: setCustId,
-              options: [{ value: '', label: 'Walk-in customer' }].concat(
-                customers.map(function(c) { return { value: c.id, label: c.name }; })
-              )
-            })
+    // Animal + Settings row at top - full width
+    h(Card, { style: { marginBottom: 16 } },
+      h(CardTitle, null, 'Step 1 - Animal & Batch'),
+      h('div', {
+        style: { padding: '16px 18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 14 }
+      },
+        h(Sel, {
+          label: 'Species',
+          value: species,
+          onChange: function(v) { setSpecies(v); setStage(''); setFormula(null); },
+          options: [{ value: '', label: 'Select species...' }].concat(
+            speciesList.map(function(s) { return { value: s.value, label: (s.icon || '\u{1F43E}') + ' ' + s.label }; })
           )
-        ),
-        h(Card, { style: { marginBottom: 12 } },
-          h(CardTitle, null, '2 - Ingredients (' + selIngrs.size + ' of ' + availableIngredients.length + ' in stock)'),
-          h('div', { style: { padding: '0 12px 12px' } },
-            h('div', { style: { display: 'flex', gap: 6, marginBottom: 8 } },
-              h(Btn, {
-                size: 'sm', variant: 'secondary',
-                onClick: function() {
-                  setSelIngrs(new Set(availableIngredients.map(function(i) { return i.id; })));
-                }
-              }, 'Select All In-Stock'),
-              h(Btn, {
-                size: 'sm', variant: 'secondary',
-                onClick: function() { setSelIngrs(new Set()); }
-              }, 'Clear All')
-            ),
-            h('div', {
-              style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 6 }
-            }, ingCards)
+        }),
+        h(Sel, {
+          label: 'Production Stage',
+          value: stage,
+          onChange: function(v) { setStage(v); setFormula(null); },
+          options: [{ value: '', label: 'Select stage...' }].concat(
+            stages.map(function(s) { return { value: s, label: s }; })
+          ),
+          disabled: !species
+        }),
+        h(Inp, {
+          label: 'Batch Size (kg)',
+          value: batchKg,
+          onChange: function(v) { setBatchKg(parseFloat(v) || 100); },
+          type: 'number'
+        }),
+        h(Sel, {
+          label: 'Customer (optional)',
+          value: custId,
+          onChange: setCustId,
+          options: [{ value: '', label: 'Walk-in customer' }].concat(
+            customers.map(function(c) { return { value: c.id, label: c.name }; })
           )
-        ),
-        formula ? h(Card, null,
-          h(CardTitle, null, '3 - Sell Prices (from Inventory)'),
-          h('div', { style: { padding: '0 12px 12px' } },
-            h('div', {
-              style: { background: '#f0f9f4', border: '1px solid ' + C.leaf, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: C.soil, marginBottom: 10 }
-            }, 'Sell prices are set in Inventory > Price button. To change a price, update it there.'),
-            formulaRows.map(function(row) {
-              return h('div', {
-                key: row.id,
-                style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid ' + C.border }
-              },
-                h('span', { style: { fontSize: 12, color: C.earth, fontWeight: 600 } }, row.name),
-                h('span', {
-                  style: { fontSize: 12, fontFamily: "'DM Mono',monospace", color: C.grass, fontWeight: 700 }
-                }, 'KES ' + row.sellPricePerKg + '/kg')
-              );
-            })
-          )
-        ) : null
-      ),
-      // Right column
-      h('div', null,
-        h(Card, { style: { marginBottom: 12 } },
-          h('div', { style: { padding: '12px 14px' } },
-            h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 } },
-              h(Btn, {
-                onClick: doFormulate,
-                variant: 'success',
-                disabled: loading || !species || !stage
-              }, loading ? 'Solving...' : 'Formulate'),
-              qBadge
-            ),
-            !species ? h('div', { style: { fontSize: 12, color: C.muted } }, 'Select species and stage - formula auto-generates.') : null,
-            (species && stage && !formula && !loading) ? h('div', { style: { fontSize: 12, color: C.muted } }, 'Auto-solving...') : null,
-            loading ? h('div', {
-              style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: C.muted }
-            }, 'Finding optimal least-cost formula...') : null
-          )
-        ),
-        anfDisplay,
-        formulaCard,
-        nutrientCard
+        })
       )
-    )
+    ),
+    // Ingredients selection - full width
+    h(Card, { style: { marginBottom: 16 } },
+      h(CardTitle, {
+        action: h('div', { style: { display: 'flex', gap: 6 } },
+          h(Btn, {
+            size: 'sm', variant: 'secondary',
+            onClick: function() {
+              setSelIngrs(new Set(availableIngredients.map(function(i) { return i.id; })));
+            }
+          }, 'Select All In-Stock'),
+          h(Btn, {
+            size: 'sm', variant: 'secondary',
+            onClick: function() { setSelIngrs(new Set()); }
+          }, 'Clear All')
+        )
+      }, 'Step 2 - Ingredients (' + selIngrs.size + ' of ' + availableIngredients.length + ' in stock)'),
+      h('div', { style: { padding: '14px 16px' } },
+        h('div', {
+          style: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))',
+            gap: 8
+          }
+        }, ingCards)
+      )
+    ),
+    // Formulate button + quality badge
+    h('div', {
+      style: {
+        display: 'flex',
+        gap: 12,
+        alignItems: 'center',
+        marginBottom: 16,
+        padding: '12px 16px',
+        background: 'white',
+        border: '1px solid ' + C.border,
+        borderRadius: 12
+      }
+    },
+      h(Btn, {
+        onClick: doFormulate,
+        variant: 'success',
+        disabled: loading || !species || !stage,
+        size: 'lg'
+      }, loading ? '\u{1F504} Solving...' : '\u{1F9EA} Formulate'),
+      qBadge,
+      (!species || !stage) ? h('span', {
+        style: { fontSize: 13, color: C.muted, fontStyle: 'italic' }
+      }, 'Select species and stage to begin') : null
+    ),
+    // Main results area
+    anfDisplay,
+    buySuggestionsCard,
+    formulaCard,
+    nutrientCard
   );
 }
-
-
-// ========== SALES PAGE ==========
-
 function SalesPage() {
   const ctx = useContext(Ctx);
   const sales = ctx.sales || [];
@@ -1762,7 +1980,7 @@ function SalesPage() {
 
   return h('div', { style: { padding: '0 26px 26px' } },
     toast ? h(Toast, { msg: toast.msg, type: toast.type }) : null,
-    h(PageHdr, { title: 'Sales Records', subtitle: 'All confirmed feed sales' }),
+    h(PageHdr, { title: '\u{1F4B0} Sales Records', subtitle: 'All confirmed feed sales' }),
     h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 18 } },
       h(StatCard, { label: 'Total Sales', value: sales.length, icon: 'S', color: C.earth }),
       h(StatCard, { label: 'Total Revenue', value: fmtKES(rev), icon: '$', color: C.grass }),
@@ -1815,7 +2033,7 @@ function ReportsPage() {
 
   return h('div', { style: { padding: '0 26px 26px' } },
     h(PageHdr, {
-      title: 'Reports & Analytics',
+      title: '\u{1F4C8} Reports & Analytics',
       subtitle: 'Business performance insights',
       action: h(Sel, {
         value: period,
@@ -1925,7 +2143,7 @@ function FeedingGuidePage() {
 
   return h('div', { style: { padding: '0 26px 26px' } },
     h(PageHdr, {
-      title: 'Feeding Quantity Guide',
+      title: '\u{1F33E} Feeding Quantity Guide',
       subtitle: 'Recommended daily feed amounts per species and production stage'
     }),
     h(Card, { style: { marginBottom: 15 } },
@@ -1986,7 +2204,7 @@ function EducationPage() {
 
   return h('div', { style: { padding: '0 26px 26px' } },
     h(PageHdr, {
-      title: 'Education Screen',
+      title: '\u{1F4D6} Education Screen',
       subtitle: 'Display tips on shop screens for waiting farmers',
       action: h(Btn, {
         onClick: function() { setAuto(!auto); },
@@ -2166,7 +2384,7 @@ function NutritionPage() {
 
   return h('div', { style: { padding: '0 26px 26px' } },
     h(PageHdr, {
-      title: 'Nutritional Requirements',
+      title: '\u{2697} Nutritional Requirements',
       subtitle: 'Reference: NRC 2012, Evonik Amino Dat, ILRI East Africa',
       action: h('div', { style: { display: 'flex', gap: 6 } },
         h(Btn, { onClick: resetDefaults, variant: 'secondary', size: 'sm' }, 'Reset to Defaults'),
@@ -2434,7 +2652,7 @@ function UsersPage(props) {
   return h('div', { style: { padding: '0 26px 26px' } },
     toast ? h(Toast, { msg: toast.msg, type: toast.type }) : null,
     h(PageHdr, {
-      title: 'User Management',
+      title: '\u{1F464} User Management',
       subtitle: 'Manage staff accounts and access levels',
       action: h(Btn, { onClick: function() { setShowAdd(true); }, variant: 'success' }, '+ New User')
     }),
@@ -2489,7 +2707,7 @@ function TraceabilityPage() {
 
   return h('div', { style: { padding: '0 26px 26px' } },
     h(PageHdr, {
-      title: 'Traceability Log',
+      title: '\u{1F50D} Traceability Log',
       subtitle: 'Full audit trail of all stock movements, sales, and deleted records'
     }),
     h('div', {
@@ -2711,7 +2929,7 @@ function ResourcesPage() {
 
   return h('div', { style: { padding: '0 26px 26px' } },
     toast ? h(Toast, { msg: toast.msg, type: toast.type }) : null,
-    h(PageHdr, { title: 'Resources', subtitle: 'Export data to CSV, print PDF reports' }),
+    h(PageHdr, { title: '\u{1F4CB} Resources', subtitle: 'Export data to CSV, print PDF reports' }),
     h('div', {
       style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14 }
     }, exports.map(function(ex, i) {
