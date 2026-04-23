@@ -18,7 +18,7 @@ const h = React.createElement;
 // and what harm it causes above that limit.
 
 const ANTI_NUTRITIVE_FACTORS = {
-  // Cottonseed cake — gossypol toxicity
+  // Cottonseed cake  -  gossypol toxicity
   'ing_6': {
     factor: 'Gossypol',
     description: 'Binds iron, causes reproductive failure and cardiac damage at high doses',
@@ -28,16 +28,16 @@ const ANTI_NUTRITIVE_FACTORS = {
       'Poultry (Kienyeji)': { maxPct: 8,  warning: 6,  note: 'Same as broiler. Monitor yolk colour.' },
       'Swine':              { maxPct: 10, warning: 8,  note: 'Gossypol accumulates in boars. Causes reproductive failure above 100mg/kg.' },
       'Dairy Cattle':       { maxPct: 20, warning: 15, note: 'Ruminants detoxify gossypol in rumen. Safe up to 20% but monitor.' },
-      'Beef Cattle':        { maxPct: 20, warning: 15, note: 'Ruminants tolerate well. Young calves more sensitive — limit to 10%.' },
+      'Beef Cattle':        { maxPct: 20, warning: 15, note: 'Ruminants tolerate well. Young calves more sensitive  -  limit to 10%.' },
       'Rabbit':             { maxPct: 10, warning: 7,  note: 'Moderate sensitivity. Monitor for reproductive issues.' },
       'Fish (Tilapia)':     { maxPct: 5,  warning: 3,  note: 'Gossypol reduces growth and causes liver damage in fish.' },
       'Goat / Sheep':       { maxPct: 15, warning: 12, note: 'Similar to cattle. Young animals more sensitive.' },
     }
   },
-  // Cassava meal — hydrocyanic acid (HCN) / cyanogenic glucosides
+  // Cassava meal  -  hydrocyanic acid (HCN) / cyanogenic glucosides
   'ing_14': {
     factor: 'Hydrocyanic Acid (HCN)',
-    description: 'Cyanogenic glucosides release HCN — blocks cellular respiration',
+    description: 'Cyanogenic glucosides release HCN  -  blocks cellular respiration',
     limits: {
       'Poultry (Broiler)':  { maxPct: 15, warning: 10, note: 'HCN content varies. Properly dried cassava is safer. Limit to 15%.' },
       'Poultry (Layer)':    { maxPct: 10, warning: 7,  note: 'Can reduce egg production. Properly processed cassava preferred.' },
@@ -50,10 +50,10 @@ const ANTI_NUTRITIVE_FACTORS = {
       'Goat / Sheep':       { maxPct: 30, warning: 25, note: 'Similar to cattle tolerance.' },
     }
   },
-  // Urea — non-protein nitrogen, toxic to monogastrics
+  // Urea  -  non-protein nitrogen, toxic to monogastrics
   'ing_18': {
     factor: 'Non-Protein Nitrogen (Urea)',
-    description: 'Converted to ammonia — useful in ruminants only, toxic to monogastrics',
+    description: 'Converted to ammonia  -  useful in ruminants only, toxic to monogastrics',
     limits: {
       'Poultry (Broiler)':  { maxPct: 0,  warning: 0,  note: 'EXCLUDED: Poultry cannot utilise NPN. Causes ammonia toxicity.' },
       'Poultry (Layer)':    { maxPct: 0,  warning: 0,  note: 'EXCLUDED: Toxic to all poultry.' },
@@ -66,7 +66,7 @@ const ANTI_NUTRITIVE_FACTORS = {
       'Goat / Sheep':       { maxPct: 1,  warning: 0.8,note: 'Max 1% of DM. Same precautions as cattle.' },
     }
   },
-  // Sorghum — condensed tannins
+  // Sorghum  -  condensed tannins
   'ing_13': {
     factor: 'Condensed Tannins',
     description: 'Bind protein and reduce digestibility. High-tannin varieties cause growth depression.',
@@ -82,7 +82,7 @@ const ANTI_NUTRITIVE_FACTORS = {
       'Goat / Sheep':       { maxPct: 40, warning: 30, note: 'Ruminants tolerate well. Browsing animals evolutionarily adapted.' },
     }
   },
-  // Blood meal — palatability and amino acid imbalance
+  // Blood meal  -  palatability and amino acid imbalance
   'ing_17': {
     factor: 'Palatability / Amino Acid Imbalance',
     description: 'High in lysine but deficient in isoleucine. Poor palatability limits inclusion.',
@@ -98,13 +98,13 @@ const ANTI_NUTRITIVE_FACTORS = {
       'Goat / Sheep':       { maxPct: 5,  warning: 4,  note: 'Same as cattle considerations.' },
     }
   },
-  // Fish meal — biogenic amines + scombrotoxin risk at high inclusions
+  // Fish meal  -  biogenic amines + scombrotoxin risk at high inclusions
   'ing_4': {
     factor: 'Biogenic Amines / Trimethylamine',
-    description: 'Poor quality fish meal contains histamine and TMA — causes fish taint in products',
+    description: 'Poor quality fish meal contains histamine and TMA  -  causes fish taint in products',
     limits: {
       'Poultry (Broiler)':  { maxPct: 8,  warning: 6,  note: 'Max 8% for meat birds. Above 5% can cause fishy taint in meat.' },
-      'Poultry (Layer)':    { maxPct: 4,  warning: 3,  note: 'CRITICAL: Above 4% causes fishy taint in eggs — unmarketable.' },
+      'Poultry (Layer)':    { maxPct: 4,  warning: 3,  note: 'CRITICAL: Above 4% causes fishy taint in eggs  -  unmarketable.' },
       'Poultry (Kienyeji)': { maxPct: 6,  warning: 4,  note: 'Same taint risk as layers above 4%.' },
       'Swine':              { maxPct: 8,  warning: 6,  note: 'Can cause pork taint. Withdraw 2 weeks before slaughter.' },
       'Dairy Cattle':       { maxPct: 5,  warning: 3,  note: 'Can cause fishy milk taint. Many farmers avoid entirely.' },
@@ -114,10 +114,10 @@ const ANTI_NUTRITIVE_FACTORS = {
       'Goat / Sheep':       { maxPct: 5,  warning: 3,  note: 'Can cause off-flavour in milk. Use carefully in dairy goats.' },
     }
   },
-  // Wheat bran — phytate reduces mineral absorption
+  // Wheat bran  -  phytate reduces mineral absorption
   'ing_3': {
     factor: 'Phytate (Phytic Acid)',
-    description: 'Binds calcium, zinc, iron — reduces mineral bioavailability',
+    description: 'Binds calcium, zinc, iron  -  reduces mineral bioavailability',
     limits: {
       'Poultry (Broiler)':  { maxPct: 15, warning: 12, note: 'Phytase enzyme recommended above 10%. Reduces Ca/P availability.' },
       'Poultry (Layer)':    { maxPct: 12, warning: 10, note: 'Can affect eggshell quality. Add phytase enzyme if using heavily.' },
@@ -130,7 +130,7 @@ const ANTI_NUTRITIVE_FACTORS = {
       'Goat / Sheep':       { maxPct: 30, warning: 25, note: 'Similar to cattle tolerance.' },
     }
   },
-  // Sunflower cake — chlorogenic acid reduces protein digestibility
+  // Sunflower cake  -  chlorogenic acid reduces protein digestibility
   'ing_5': {
     factor: 'Chlorogenic Acid',
     description: 'Reduces protein digestibility and causes discolouration',
@@ -201,7 +201,7 @@ function setAnimalReqs(v) {
   serverPush('animalReqs', v);
 }
 
-// Server push — fire and forget, never blocks the UI
+// Server push  -  fire and forget, never blocks the UI
 async function serverPush(col, data) {
   const key = import.meta.env?.VITE_SYNC_KEY || 'wamifugo2024';
   try {
@@ -337,7 +337,7 @@ function LoginPage({onLogin}){
     const user=users.find(u=>u.username===uname&&u.password===pass&&u.active);
     if(user)onLogin(user);else setE('Invalid username or password.');
   };
-  const requestCode=async()=>{if(!email.trim()){setE('Enter your email.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.trim()})});const d=await r.json();setLoading(false);if(d.ok){setM(d.msg||'Code sent — check inbox and spam.');setView('verify');}else setE(d.error||'Something went wrong.');}catch{setLoading(false);setE('Could not reach server.');}};
+  const requestCode=async()=>{if(!email.trim()){setE('Enter your email.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.trim()})});const d=await r.json();setLoading(false);if(d.ok){setM(d.msg||'Code sent  -  check inbox and spam.');setView('verify');}else setE(d.error||'Something went wrong.');}catch{setLoading(false);setE('Could not reach server.');}};
   const verifyCode=async()=>{if(code.length!==6){setE('Enter the 6-digit code.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify_code',email:email.trim(),code:code.trim()})});const d=await r.json();setLoading(false);if(d.ok){setView('newpass');setM('');}else setE(d.error||'Invalid code.');}catch{setLoading(false);setE('Could not reach server.');}};
   const resetPassword=async()=>{if(!(newPass.length >= 6)){setE('Min 6 characters.');return;}if(newPass!==newPass2){setE('Passwords do not match.');return;}setLoading(true);setE('');try{const r=await fetch('/api/auth/reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset_password',email:email.trim(),code:code.trim(),password:newPass})});const d=await r.json();setLoading(false);if(d.ok){const us=db.get('users',SEED_USERS);db.set('users',us.map(u=>u.email&&u.email.toLowerCase()===email.trim().toLowerCase()?{...u,password:newPass}:u));setM('Password updated! You can now sign in.');setView('login');setCode('');setNewPass('');setNewPass2('');}else setE(d.error||'Could not update password.');}catch{setLoading(false);setE('Could not reach server.');}};
   const card=h('div',{style:{background:'white',borderRadius:20,padding:'40px 36px',width:'100%',maxWidth:400,boxShadow:'0 32px 80px rgba(0,0,0,0.4)'}},
@@ -420,7 +420,7 @@ function DashboardPage(){
       h(StatCard,{label:'Low Stock Alerts',value:lowStock.length,sub:'items need reorder',color:lowStock.length>0?C.danger:C.grass,icon:'⚠️'})),
     h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr',gap:15,marginBottom:15}},
       h(Card,null,
-        h(CardTitle,null,'Revenue — Last 7 Days'),
+        h(CardTitle,null,'Revenue  -  Last 7 Days'),
         h('div',{style:{padding:'18px 14px'}},
           h('div',{style:{display:'flex',alignItems:'flex-end',gap:9,height:130}},
             last7.map((d,i)=>h('div',{key:i,style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}},
@@ -515,7 +515,7 @@ function InventoryPage(){
           h(Btn,{size:'sm',variant:'secondary',onClick:()=>openPriceEdit(r)},'💲 Price'),
           user?.role==='admin'&&h(Btn,{size:'sm',variant:'danger',onClick:()=>deleteInventoryItem(r)},'🗑'))},
       ],rows:inventory,emptyMsg:'No inventory items.'})),
-    showPriceEdit&&h(Modal,{title:'Set Sell Price — '+showPriceEdit.name,onClose:()=>setShowPriceEdit(null),width:440},
+    showPriceEdit&&h(Modal,{title:'Set Sell Price  -  '+showPriceEdit.name,onClose:()=>setShowPriceEdit(null),width:440},
       h('div',{style:{background:C.parchment,borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:C.soil}},
         'Current Buy Price: ',h('strong',null,fmtKES(showPriceEdit.lastPrice||0)+'/kg')),
       h('div',{style:{display:'flex',gap:0,marginBottom:14,borderRadius:8,overflow:'hidden',border:'1px solid '+C.border}},
@@ -599,15 +599,15 @@ function IngredientsPage(){
       h(Tbl,{cols:[
         {key:'name',label:'Name',render:r=>h('span',{style:{fontWeight:600,color:C.earth}},r.name)},
         {key:'category',label:'Category',render:r=>{const m=catMeta(r.category);return h(Badge,{color:m.color},m.icon+' '+m.label);}},
-        {key:'price',label:'Sell Price/kg',render:r=>{const inv=inventory?.find(x=>x.id===r.id);const sp=inv?.sellPriceDirect||(inv?.lastPrice?(inv.lastPrice*(1+(inv.margin||20)/100)):0);return h('span',{style:{fontFamily:"'DM Mono',monospace",color:C.grass}},sp?'KES '+sp.toFixed(0):'—')}},
-        {key:'cp',label:'CP%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace",color:r.cp>=30?C.grass:C.soil}},r.cp||'—')},
-        {key:'me',label:'ME',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.me||'—')},
-        {key:'ca',label:'Ca%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.ca||'—')},
-        {key:'p',label:'P%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.p||'—')},
-        {key:'antiNote',label:'Anti-Nutritive Note',render:r=>r.antiNote?h('span',{style:{fontSize:11,color:C.warning}},'⚠ '+r.antiNote.slice(0,45)+(r.antiNote.length>45?'…':'')):h('span',{style:{color:C.muted}},'—')},
+        {key:'price',label:'Sell Price/kg',render:r=>{const inv=inventory?.find(x=>x.id===r.id);const sp=inv?.sellPriceDirect||(inv?.lastPrice?(inv.lastPrice*(1+(inv.margin||20)/100)):0);return h('span',{style:{fontFamily:"'DM Mono',monospace",color:C.grass}},sp?'KES '+sp.toFixed(0):' - ')}},
+        {key:'cp',label:'CP%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace",color:r.cp>=30?C.grass:C.soil}},r.cp||' - ')},
+        {key:'me',label:'ME',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.me||' - ')},
+        {key:'ca',label:'Ca%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.ca||' - ')},
+        {key:'p',label:'P%',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},r.p||' - ')},
+        {key:'antiNote',label:'Anti-Nutritive Note',render:r=>r.antiNote?h('span',{style:{fontSize:11,color:C.warning}},'⚠ '+r.antiNote.slice(0,45)+(r.antiNote.length>45?'…':'')):h('span',{style:{color:C.muted}},' - ')},
         {key:'actions',label:'',render:r=>h('div',{style:{display:'flex',gap:5}},h(Btn,{size:'sm',variant:'secondary',onClick:()=>openEdit(r)},'✏ Edit'),h(Btn,{size:'sm',variant:'danger',onClick:()=>delIng(r)},'🗑 Del'))},
       ],rows:filtered,emptyMsg:'No ingredients found.'})),
-    showForm&&h(Modal,{title:editing?`Edit — ${editing.name}`:'Add New Ingredient',onClose:()=>{setShowForm(false);setEditing(null);},width:620},
+    showForm&&h(Modal,{title:editing?`Edit  -  ${editing.name}`:'Add New Ingredient',onClose:()=>{setShowForm(false);setEditing(null);},width:620},
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}},
         h('div',{style:{gridColumn:'1/-1'}},h(Inp,{label:'Ingredient Name *',value:form.name,onChange:v=>setForm({...form,name:v}),placeholder:'e.g. Wheat Pollard',required:true})),
         h('div',null,
@@ -627,7 +627,7 @@ function IngredientsPage(){
           h(NF,{lbl:'Phosphorus P (%)',field:'p',ph:'e.g. 0.90'}))),
       h('div',{style:{marginBottom:14}},
         h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:0.5,color:C.muted,marginBottom:4}},'Anti-Nutritive Factor Note (optional)'),
-        h('textarea',{value:form.antiNote,onChange:e=>setForm({...form,antiNote:e.target.value}),placeholder:'e.g. Phytate phosphorus — limit to 15% in poultry without phytase enzyme',rows:2,style:{width:'100%',padding:'8px 11px',border:`1px solid ${C.border}`,borderRadius:8,fontSize:13,color:C.ink,background:C.cream,resize:'vertical'}})),
+        h('textarea',{value:form.antiNote,onChange:e=>setForm({...form,antiNote:e.target.value}),placeholder:'e.g. Phytate phosphorus  -  limit to 15% in poultry without phytase enzyme',rows:2,style:{width:'100%',padding:'8px 11px',border:`1px solid ${C.border}`,borderRadius:8,fontSize:13,color:C.ink,background:C.cream,resize:'vertical'}})),
       !editing&&h('div',{style:{background:'#f0f9f4',border:`1px solid ${C.leaf}`,borderRadius:8,padding:'9px 13px',fontSize:12,color:C.soil,marginBottom:13}},'✅ This ingredient will automatically be added to Inventory with 0 stock. Go to Inventory → Add Stock to record a purchase.'),
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
         h(Btn,{onClick:()=>{setShowForm(false);setEditing(null);},variant:'secondary'},'Cancel'),
@@ -654,7 +654,7 @@ function CustomersPage(){
       h(Tbl,{cols:[
         {key:'name',label:'Name',render:r=>h('span',{style:{fontWeight:600}},r.name)},
         {key:'phone',label:'Phone'},{key:'location',label:'Location'},
-        {key:'species',label:'Animals',render:r=>r.species?h(Badge,null,r.species):h('span',{style:{color:C.muted}},'—')},
+        {key:'species',label:'Animals',render:r=>r.species?h(Badge,null,r.species):h('span',{style:{color:C.muted}},' - ')},
         {key:'formulas',label:'Saved Formulas',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace"}},savedFormulas.filter(f=>f.customerId===r.id).length)},
         {key:'actions',label:'',render:r=>h('div',{style:{display:'flex',gap:6}},h(Btn,{size:'sm',variant:'secondary',onClick:()=>{setSel(r);setForm({name:r.name,phone:r.phone,location:r.location,species:r.species,notes:r.notes});setShowAdd(true);}},'Edit'),h(Btn,{size:'sm',variant:'danger',onClick:()=>{if(window.confirm('Delete customer?'))setCustomers(customers.filter(c=>c.id!==r.id));}},'Del'))},
       ],rows:customers,emptyMsg:'No customers yet.'})),
@@ -698,7 +698,7 @@ function FormulatorPage(){
   const [toast,setToast]=useState(null);
   const showT=(msg,type='success')=>{setToast({msg,type});setTimeout(()=>setToast(null),3500);};
 
-  // ── Ingredient selection — auto-select all available inventory items ──────────
+  // ── Ingredient selection  -  auto-select all available inventory items ──────────
   const availableIngredients=ingredients.filter(i=>{
     const inv=inventory.find(x=>x.id===i.id);
     return inv&&inv.qty>0;
@@ -812,7 +812,7 @@ function FormulatorPage(){
     const saved=db.get('savedFormulas',[]);
     db.set('savedFormulas',[...saved,{id:uid(),name:fName,species,stage,formula,nutrients,
       costPerKg:costPKg,customerId:custId||null,
-      customerName:customers.find(c=>c.id===custId)?.name||'—',savedOn:today(),batchKg}]);
+      customerName:customers.find(c=>c.id===custId)?.name||' - ',savedOn:today(),batchKg}]);
     serverPush('savedFormulas',db.get('savedFormulas',[]));
     setShowSave(false);setFName('');showT('Formula saved!');
   };
@@ -844,7 +844,7 @@ function FormulatorPage(){
     const cust=customers.find(c=>c.id===custId);
     const newSale={id:uid(),date:today(),species,stage,batchKg,
       customerId:custId||null,customerName:cust?.name||'Walk-in',customer:cust?.name||'Walk-in',
-      product:`${species} — ${stage} (${batchKg}kg)`,
+      product:`${species}  -  ${stage} (${batchKg}kg)`,
       cost:pendingSale.totalCost,total:agreedTotal,
       totalRevenue:agreedTotal,totalCost:pendingSale.totalCost,
       profit:agreedTotal-pendingSale.totalCost,discount:disc,
@@ -918,7 +918,7 @@ function FormulatorPage(){
       h('div',null,
         // Section 1: Animal
         h(Card,{style:{marginBottom:12}},
-          h(CardTitle,null,'1 — Animal'),
+          h(CardTitle,null,'1  -  Animal'),
           h('div',{style:{padding:'0 14px 14px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
             h(Sel,{label:'Species',value:species,onChange:v=>{setSpecies(v);setStage('');setFormula(null);},
               options:[{value:'',label:'Select species…'},...speciesList.map(s=>({value:s.value,label:s.icon+' '+s.label}))]}),
@@ -931,7 +931,7 @@ function FormulatorPage(){
 
         // Section 2: Ingredients
         h(Card,{style:{marginBottom:12}},
-          h(CardTitle,null,`2 — Ingredients (${selIngrs.size} selected, ${availableIngredients.length} in stock)`),
+          h(CardTitle,null,`2  -  Ingredients (${selIngrs.size} selected, ${availableIngredients.length} in stock)`),
           h('div',{style:{padding:'0 12px 12px'}},
             h('div',{style:{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap'}},
               h(Btn,{size:'sm',variant:'secondary',
@@ -957,7 +957,7 @@ function FormulatorPage(){
 
         // Section 3: Sell Prices (read-only from inventory)
         formula&&h(Card,null,
-          h(CardTitle,null,'3 — Sell Prices (from Inventory)'),
+          h(CardTitle,null,'3  -  Sell Prices (from Inventory)'),
           h('div',{style:{padding:'0 12px 12px'}},
             h('div',{style:{background:'#f0f9f4',border:'1px solid '+C.leaf,borderRadius:8,
               padding:'8px 12px',fontSize:12,color:C.soil,marginBottom:10}},
@@ -985,7 +985,7 @@ function FormulatorPage(){
                 solveQuality==='good'?'✓ Good solution':
                 solveQuality==='relaxed'?'⚠ Approximated':
                 '⚠ Fallback mix')),
-            !species&&h('div',{style:{fontSize:12,color:C.muted}},'Select species and stage above — formula auto-generates.'),
+            !species&&h('div',{style:{fontSize:12,color:C.muted}},'Select species and stage above  -  formula auto-generates.'),
             species&&stage&&!formula&&!loading&&h('div',{style:{fontSize:12,color:C.muted}},'Auto-solving…'),
             loading&&h('div',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13,color:C.muted}},
               h('div',{className:'spin',style:{width:16,height:16,border:'2px solid '+C.border,
@@ -999,7 +999,7 @@ function FormulatorPage(){
               borderRadius:7,background:'#fde8e8',border:'1px solid '+C.danger+'44',marginBottom:5}},
               h('span',null,'🚫'),
               h('div',null,
-                h('div',{style:{fontWeight:700,fontSize:12,color:C.danger}},e.ingredient+' EXCLUDED — '+e.factor),
+                h('div',{style:{fontWeight:700,fontSize:12,color:C.danger}},e.ingredient+' EXCLUDED  -  '+e.factor),
                 h('div',{style:{fontSize:11,color:C.muted}},e.note)))),
             anfWarnings.map((w,i)=>h('div',{key:'w'+i,style:{display:'flex',gap:8,padding:'7px 10px',
               borderRadius:7,marginBottom:4,
@@ -1008,7 +1008,7 @@ function FormulatorPage(){
               h('span',null,w.severity==='danger'?'❌':'⚠️'),
               h('div',null,
                 h('div',{style:{fontWeight:700,fontSize:12,color:w.severity==='danger'?C.danger:C.savanna}},
-                  w.ingredient+(w.factor?' — '+w.factor:'')+
+                  w.ingredient+(w.factor?'  -  '+w.factor:'')+
                   (w.current?' at '+w.current+'%'+' (limit: '+w.maxPct+'%)':'')),
                 h('div',{style:{fontSize:11,color:C.muted}},w.note)))))),
 
@@ -1017,7 +1017,7 @@ function FormulatorPage(){
           h('div',{style:{background:`linear-gradient(135deg,${C.earth},${C.soil})`,
             padding:'13px 17px',display:'flex',justifyContent:'space-between',alignItems:'center'}},
             h('div',null,
-              h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:15,color:'white',fontWeight:700}},species+' — '+stage),
+              h('div',{style:{fontFamily:"'Playfair Display',serif",fontSize:15,color:'white',fontWeight:700}},species+'  -  '+stage),
               h('div',{style:{fontSize:11,color:'rgba(255,255,255,0.6)',marginTop:2}},batchKg+'kg batch')),
             h('div',{style:{textAlign:'right'}},
               h('div',{style:{fontSize:22,fontFamily:"'Playfair Display',serif",fontWeight:900,color:C.harvest}},
@@ -1069,7 +1069,7 @@ function FormulatorPage(){
     // ── Sell modal ──────────────────────────────────────────────────────────────
     showSell&&pendingSale&&h(Modal,{title:'Confirm Sale',onClose:()=>setShowSell(false),width:480},
       h('div',{style:{background:C.parchment,borderRadius:8,padding:'11px 14px',marginBottom:14}},
-        h('div',{style:{fontWeight:700,color:C.earth,marginBottom:6}},species+' — '+stage+' ('+batchKg+'kg)'),
+        h('div',{style:{fontWeight:700,color:C.earth,marginBottom:6}},species+'  -  '+stage+' ('+batchKg+'kg)'),
         h('div',{style:{fontSize:13,color:C.muted}},'Cost of ingredients: ',
           h('strong',{style:{color:C.danger}},'KES '+pendingSale.totalCost.toFixed(2)))),
       Inp({label:'Agreed Sell Price (KES/kg)',value:selPrice,onChange:setSelPrice,
@@ -1082,7 +1082,7 @@ function FormulatorPage(){
       h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
         h(Btn,{onClick:()=>setShowSell(false),variant:'secondary'},'Cancel'),
         h(Btn,{onClick:doConfirmSale,variant:'success',disabled:!selPrice||!(parseFloat(selPrice)>0)},
-          '✅ Customer Agreed — Record Sale')));
+          '✅ Customer Agreed - Record Sale')));
 }
 
 
@@ -1152,9 +1152,9 @@ function ReportsPage(){
     {label:'Gross Revenue',val:fmtKES(rev),color:C.grass},
     {label:'Feed Cost of Goods',val:fmtKES(cost),color:C.danger},
     {label:'Gross Profit',val:fmtKES(profit),color:profit>=0?C.grass:C.danger},
-    {label:'Profit Margin',val:rev?((profit/rev)*100).toFixed(1)+'%':'—',color:C.earth},
+    {label:'Profit Margin',val:rev?((profit/rev)*100).toFixed(1)+'%':' - ',color:C.earth},
     {label:'Total Orders',val:fS.length,color:C.earth},
-    {label:'Avg Order Value',val:fS.length?fmtKES(rev/fS.length):'—',color:C.earth},
+    {label:'Avg Order Value',val:fS.length?fmtKES(rev/fS.length):' - ',color:C.earth},
   ];
 
   return h('div',{style:{padding:'0 26px 26px'}},
@@ -1174,7 +1174,7 @@ function ReportsPage(){
     ),
     h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:15,marginBottom:15}},
       h(Card,null,
-        h(CardTitle,null,'Sales Summary — '+pLabel),
+        h(CardTitle,null,'Sales Summary  -  '+pLabel),
         h('div',{style:{padding:15}},
           summaryRows.map((r,i)=>
             h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:i<5?'1px solid '+C.border:'none'}},
@@ -1355,7 +1355,7 @@ function NutritionPage(){
       h('input',{type:'number',step:'any',value:reqForm[nut][0],
         onChange:e=>{const v=[...reqForm[nut]];v[0]=parseFloat(e.target.value)||0;setReqForm({...reqForm,[nut]:v});},
         style:{width:80,padding:'6px 8px',border:'1px solid '+C.border,borderRadius:6,fontSize:12,fontFamily:"'DM Mono',monospace",background:C.cream},placeholder:'Min'}),
-      h('span',{style:{color:C.muted,fontSize:12}},'–'),
+      h('span',{style:{color:C.muted,fontSize:12}},' - '),
       h('input',{type:'number',step:'any',value:reqForm[nut][1],
         onChange:e=>{const v=[...reqForm[nut]];v[1]=parseFloat(e.target.value)||0;setReqForm({...reqForm,[nut]:v});},
         style:{width:80,padding:'6px 8px',border:'1px solid '+C.border,borderRadius:6,fontSize:12,fontFamily:"'DM Mono',monospace",background:C.cream},placeholder:'Max'})));
@@ -1394,7 +1394,7 @@ function NutritionPage(){
                 h('td',{style:{padding:'8px 10px',color:C.soil}},r.stage),
                 ...['cp','me','fat','fibre','ca','p','lys','met'].map(nut=>
                   h('td',{key:nut,style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace",color:C.muted,whiteSpace:'nowrap'}},
-                    r[nut][0]+'–'+r[nut][1])),
+                    r[nut][0]+' - '+r[nut][1])),
                 h('td',{style:{padding:'8px 10px'}},
                   h('div',{style:{display:'flex',gap:5}},
                     h(Btn,{size:'sm',variant:'secondary',onClick:()=>openEditReq(r)},'✏'),
@@ -1418,10 +1418,10 @@ function NutritionPage(){
               .slice(0,30).map((ing,i)=>
                 h('tr',{key:ing.id,style:{borderBottom:'1px solid '+C.border,background:i%2===0?C.cream:'white'}},
                   h('td',{style:{padding:'8px 10px',fontWeight:600,color:C.earth}},ing.name),
-                  h('td',{style:{padding:'8px 10px'}},h(Badge,{color:C.savanna},ing.category||'—')),
-                  h('td',{style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace"}},ing.price?'KES '+ing.price:'—'),
+                  h('td',{style:{padding:'8px 10px'}},h(Badge,{color:C.savanna},ing.category||' - ')),
+                  h('td',{style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace"}},ing.price?'KES '+ing.price:' - '),
                   ...['cp','me','fat','fibre','ca','p','lys','met'].map(n=>
-                    h('td',{key:n,style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace",color:C.muted}},ing[n]??'—')))))))),
+                    h('td',{key:n,style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace",color:C.muted}},ing[n]??' - ')))))))),
 
     // ── TAB: Upload ──
     tab==='upload'&&h('div',null,
@@ -1452,12 +1452,12 @@ function NutritionPage(){
           },variant:'secondary'},'⬇ Export Requirements CSV')))),
 
     // ── Edit/Add Modal ──
-    showReqForm&&h(Modal,{title:editReq?'Edit: '+editReq.category+' — '+editReq.stage:'Add Animal Stage',onClose:()=>{setShowReqForm(false);setEditReq(null);},width:680},
+    showReqForm&&h(Modal,{title:editReq?'Edit: '+editReq.category+'  -  '+editReq.stage:'Add Animal Stage',onClose:()=>{setShowReqForm(false);setEditReq(null);},width:680},
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}},
         h('div',null,Inp({label:'Animal Category *',value:reqForm.category,onChange:v=>setReqForm({...reqForm,category:v}),placeholder:'e.g. Poultry (Broiler)'})),
         h('div',null,Inp({label:'Life Stage *',value:reqForm.stage,onChange:v=>setReqForm({...reqForm,stage:v}),placeholder:'e.g. Starter (0-21 days)'}))),
       h('div',{style:{borderTop:'1px solid '+C.border,paddingTop:14,marginBottom:10}},
-        h('div',{style:{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,textTransform:'uppercase',color:C.muted,marginBottom:12}},'Nutritional Requirements — Min / Max per nutrient in finished feed')),
+        h('div',{style:{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,textTransform:'uppercase',color:C.muted,marginBottom:12}},'Nutritional Requirements  -  Min / Max per nutrient in finished feed')),
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
         h(RangeInp,{nut:'cp',  label:'Crude Protein',     unit:'%'}),
         h(RangeInp,{nut:'me',  label:'Metabolisable Energy',unit:'kcal/kg'}),
@@ -1583,7 +1583,7 @@ function UsersPage({currentUser}){
                 h('div',{style:{fontWeight:700,color:C.earth}},u.name),
                 u.created&&h('div',{style:{fontSize:10,color:C.muted}},u.created)),
               h('td',{style:{padding:'10px 12px',fontFamily:"'DM Mono',monospace",fontSize:12}},u.username),
-              h('td',{style:{padding:'10px 12px',fontSize:12,color:C.muted}},u.email||'—'),
+              h('td',{style:{padding:'10px 12px',fontSize:12,color:C.muted}},u.email||' - '),
               h('td',{style:{padding:'10px 12px'}},
                 h(Badge,{color:roleColor[u.role]||C.muted},u.role)),
               h('td',{style:{padding:'10px 12px'}},
@@ -1607,7 +1607,7 @@ function UsersPage({currentUser}){
         h('div',null,Inp({label:'Password *',value:form.password,onChange:v=>setForm({...form,password:v}),type:'password',placeholder:'Min 6 characters'})),
         h('div',{style:{gridColumn:'1/-1'}},
           h(Sel,{label:'Role',value:form.role,onChange:v=>setForm({...form,role:v}),
-            options:[{value:'staff',label:'Staff — limited access'},{value:'admin',label:'Admin — full access'}]}))),
+            options:[{value:'staff',label:'Staff  -  limited access'},{value:'admin',label:'Admin  -  full access'}]}))),
       h('div',{style:{background:C.parchment,borderRadius:8,padding:'10px 14px',marginTop:12,fontSize:12,color:C.muted}},
         h('strong',null,'Staff'),' can record sales, view inventory and customers.',h('br',null),
         h('strong',null,'Admin'),' can additionally manage users, delete records, edit prices and access all settings.'),
@@ -1616,7 +1616,7 @@ function UsersPage({currentUser}){
         h(Btn,{onClick:addUser,variant:'success',disabled:!form.name||!form.username||!form.password},'Create User'))),
 
     // ── Edit Profile Modal ──
-    editUser&&h(Modal,{title:'Edit Profile — '+editUser.name,onClose:()=>setEditUser(null),width:480},
+    editUser&&h(Modal,{title:'Edit Profile  -  '+editUser.name,onClose:()=>setEditUser(null),width:480},
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
         h('div',null,Inp({label:'Full Name *',value:editForm.name,onChange:v=>setEditForm({...editForm,name:v})})),
         h('div',null,Inp({label:'Username *',value:editForm.username,onChange:v=>setEditForm({...editForm,username:v.toLowerCase().replace(/[\s]/g,'')})})),
@@ -1629,7 +1629,7 @@ function UsersPage({currentUser}){
         h(Btn,{onClick:saveEdit,variant:'success',disabled:!editForm.name||!editForm.username},'Save Changes'))),
 
     // ── Change Password Modal ──
-    pwdUser&&h(Modal,{title:'Change Password — '+pwdUser.name,onClose:()=>setPwdUser(null),width:420},
+    pwdUser&&h(Modal,{title:'Change Password  -  '+pwdUser.name,onClose:()=>setPwdUser(null),width:420},
       h('div',{style:{background:C.parchment,borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:C.soil}},
         pwdUser.id===currentUser?.id&&currentUser?.role!=='admin'
           ?'Enter your current password to set a new one.'
@@ -1693,15 +1693,15 @@ function TraceabilityPage(){
               h('th',{key:i,style:{padding:'8px 10px',background:C.earth,color:'white',textAlign:'left',fontSize:10,textTransform:'uppercase',letterSpacing:1,whiteSpace:'nowrap'}},col)))),
           h('tbody',null,filtered.map((e,i)=>
             h('tr',{key:e.id||i,style:{borderBottom:'1px solid '+C.border,background:i%2===0?C.cream:'white'}},
-              h('td',{style:{padding:'8px 10px',whiteSpace:'nowrap',color:C.muted,fontSize:11}},e.date||e.at?.slice(0,10)||'—'),
+              h('td',{style:{padding:'8px 10px',whiteSpace:'nowrap',color:C.muted,fontSize:11}},e.date||e.at?.slice(0,10)||' - '),
               h('td',{style:{padding:'8px 10px'}},h('span',{style:{background:(typeColor[e.type]||C.muted)+'22',color:typeColor[e.type]||C.muted,padding:'2px 8px',borderRadius:12,fontSize:10,fontWeight:700,whiteSpace:'nowrap'}},typeLabel[e.type]||e.type)),
-              h('td',{style:{padding:'8px 10px',fontWeight:600,color:C.earth}},e.itemName||e.product||'—'),
-              h('td',{style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace"}},e.qty!=null?(e.qty>0?'+':'')+fmt(e.qty)+' kg':'—'),
-              h('td',{style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace"}},e.total?fmtKES(e.total):'—'),
-              h('td',{style:{padding:'8px 10px',fontSize:11,color:C.muted}},e.by||'—'),
+              h('td',{style:{padding:'8px 10px',fontWeight:600,color:C.earth}},e.itemName||e.product||' - '),
+              h('td',{style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace"}},e.qty!=null?(e.qty>0?'+':'')+fmt(e.qty)+' kg':' - '),
+              h('td',{style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace"}},e.total?fmtKES(e.total):' - '),
+              h('td',{style:{padding:'8px 10px',fontSize:11,color:C.muted}},e.by||' - '),
               h('td',{style:{padding:'8px 10px',fontSize:11,color:C.muted,maxWidth:300}},
                 e.deletedRecord?h('details',null,h('summary',{style:{cursor:'pointer',color:C.danger}},'View deleted record'),h('pre',{style:{fontSize:10,marginTop:4,whiteSpace:'pre-wrap',wordBreak:'break-all'}},e.deletedRecord)):
-                e.notes||e.supplier||'—'))))))));
+                e.notes||e.supplier||' - '))))))));
 }
 
 
