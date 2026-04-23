@@ -12,6 +12,181 @@ import { solveLeastCost, solveLeastCostLP, calcNutrients, calcCost } from "./sol
 
 const h = React.createElement;
 
+// ── ANTI-NUTRITIVE FACTORS DATABASE ─────────────────────────────────────────
+// Sources: ILRI Feed Composition Tables, NRC (2012), FAO Animal Feed Resources
+// Each factor defines: which ingredient, which factor, safe limit per species,
+// and what harm it causes above that limit.
+
+const ANTI_NUTRITIVE_FACTORS = {
+  // Cottonseed cake — gossypol toxicity
+  'ing_6': {
+    factor: 'Gossypol',
+    description: 'Binds iron, causes reproductive failure and cardiac damage at high doses',
+    limits: {
+      'Poultry (Broiler)':  { maxPct: 8,  warning: 6,  note: 'Free gossypol limit: 100mg/kg feed. Causes discolouration of egg yolks in layers.' },
+      'Poultry (Layer)':    { maxPct: 5,  warning: 3,  note: 'Causes olive/khaki discolouration of egg yolks. Keep below 5% to avoid.' },
+      'Poultry (Kienyeji)': { maxPct: 8,  warning: 6,  note: 'Same as broiler. Monitor yolk colour.' },
+      'Swine':              { maxPct: 10, warning: 8,  note: 'Gossypol accumulates in boars. Causes reproductive failure above 100mg/kg.' },
+      'Dairy Cattle':       { maxPct: 20, warning: 15, note: 'Ruminants detoxify gossypol in rumen. Safe up to 20% but monitor.' },
+      'Beef Cattle':        { maxPct: 20, warning: 15, note: 'Ruminants tolerate well. Young calves more sensitive — limit to 10%.' },
+      'Rabbit':             { maxPct: 10, warning: 7,  note: 'Moderate sensitivity. Monitor for reproductive issues.' },
+      'Fish (Tilapia)':     { maxPct: 5,  warning: 3,  note: 'Gossypol reduces growth and causes liver damage in fish.' },
+      'Goat / Sheep':       { maxPct: 15, warning: 12, note: 'Similar to cattle. Young animals more sensitive.' },
+    }
+  },
+  // Cassava meal — hydrocyanic acid (HCN) / cyanogenic glucosides
+  'ing_14': {
+    factor: 'Hydrocyanic Acid (HCN)',
+    description: 'Cyanogenic glucosides release HCN — blocks cellular respiration',
+    limits: {
+      'Poultry (Broiler)':  { maxPct: 15, warning: 10, note: 'HCN content varies. Properly dried cassava is safer. Limit to 15%.' },
+      'Poultry (Layer)':    { maxPct: 10, warning: 7,  note: 'Can reduce egg production. Properly processed cassava preferred.' },
+      'Poultry (Kienyeji)': { maxPct: 15, warning: 10, note: 'Same as broiler.' },
+      'Swine':              { maxPct: 20, warning: 15, note: 'Pigs tolerate well if properly dried. Limit in young piglets.' },
+      'Dairy Cattle':       { maxPct: 30, warning: 25, note: 'Ruminants handle HCN via rumen detox. Ensure proper drying.' },
+      'Beef Cattle':        { maxPct: 30, warning: 25, note: 'Well-dried cassava is safe at high levels in ruminants.' },
+      'Rabbit':             { maxPct: 15, warning: 10, note: 'Moderate sensitivity. Use properly dried/fermented cassava only.' },
+      'Fish (Tilapia)':     { maxPct: 10, warning: 7,  note: 'HCN toxic to fish. Use only sun-dried or detoxified cassava.' },
+      'Goat / Sheep':       { maxPct: 30, warning: 25, note: 'Similar to cattle tolerance.' },
+    }
+  },
+  // Urea — non-protein nitrogen, toxic to monogastrics
+  'ing_18': {
+    factor: 'Non-Protein Nitrogen (Urea)',
+    description: 'Converted to ammonia — useful in ruminants only, toxic to monogastrics',
+    limits: {
+      'Poultry (Broiler)':  { maxPct: 0,  warning: 0,  note: 'EXCLUDED: Poultry cannot utilise NPN. Causes ammonia toxicity.' },
+      'Poultry (Layer)':    { maxPct: 0,  warning: 0,  note: 'EXCLUDED: Toxic to all poultry.' },
+      'Poultry (Kienyeji)': { maxPct: 0,  warning: 0,  note: 'EXCLUDED: Toxic to all poultry.' },
+      'Swine':              { maxPct: 0,  warning: 0,  note: 'EXCLUDED: Pigs cannot utilise NPN. Causes urea toxicity.' },
+      'Dairy Cattle':       { maxPct: 1,  warning: 0.8,note: 'Max 1% of DM. Introduced gradually. Never feed hungry animals.' },
+      'Beef Cattle':        { maxPct: 1,  warning: 0.8,note: 'Max 1% of DM. Gradual introduction essential. Toxic if overdosed.' },
+      'Rabbit':             { maxPct: 0,  warning: 0,  note: 'EXCLUDED: Hindgut fermenters cannot utilise urea safely.' },
+      'Fish (Tilapia)':     { maxPct: 0,  warning: 0,  note: 'EXCLUDED: Toxic to fish.' },
+      'Goat / Sheep':       { maxPct: 1,  warning: 0.8,note: 'Max 1% of DM. Same precautions as cattle.' },
+    }
+  },
+  // Sorghum — condensed tannins
+  'ing_13': {
+    factor: 'Condensed Tannins',
+    description: 'Bind protein and reduce digestibility. High-tannin varieties cause growth depression.',
+    limits: {
+      'Poultry (Broiler)':  { maxPct: 20, warning: 15, note: 'High-tannin sorghum reduces AME and growth rate. Use low-tannin varieties.' },
+      'Poultry (Layer)':    { maxPct: 15, warning: 10, note: 'Reduces egg production and feed efficiency.' },
+      'Poultry (Kienyeji)': { maxPct: 20, warning: 15, note: 'More tolerant than commercial broilers. Still limit high-tannin varieties.' },
+      'Swine':              { maxPct: 30, warning: 25, note: 'Pigs tolerate tannins better than poultry.' },
+      'Dairy Cattle':       { maxPct: 40, warning: 35, note: 'Ruminants tolerate tannins well. Can reduce bloat.' },
+      'Beef Cattle':        { maxPct: 40, warning: 35, note: 'Well tolerated. Some tannins reduce methane production.' },
+      'Rabbit':             { maxPct: 20, warning: 15, note: 'Moderate sensitivity. Avoid high-tannin varieties.' },
+      'Fish (Tilapia)':     { maxPct: 15, warning: 10, note: 'Tannins reduce palatability and nutrient absorption.' },
+      'Goat / Sheep':       { maxPct: 40, warning: 30, note: 'Ruminants tolerate well. Browsing animals evolutionarily adapted.' },
+    }
+  },
+  // Blood meal — palatability and amino acid imbalance
+  'ing_17': {
+    factor: 'Palatability / Amino Acid Imbalance',
+    description: 'High in lysine but deficient in isoleucine. Poor palatability limits inclusion.',
+    limits: {
+      'Poultry (Broiler)':  { maxPct: 4,  warning: 3,  note: 'Isoleucine deficiency above 3%. Max 4%. Mix with other protein sources.' },
+      'Poultry (Layer)':    { maxPct: 3,  warning: 2,  note: 'Reduces feed intake due to poor palatability.' },
+      'Poultry (Kienyeji)': { maxPct: 4,  warning: 3,  note: 'Same as broiler.' },
+      'Swine':              { maxPct: 5,  warning: 4,  note: 'Palatability issues. Mix with molasses to improve acceptance.' },
+      'Dairy Cattle':       { maxPct: 5,  warning: 4,  note: 'Good rumen bypass protein. Effective at 2-5% of concentrate.' },
+      'Beef Cattle':        { maxPct: 5,  warning: 4,  note: 'Effective bypass protein supplement.' },
+      'Rabbit':             { maxPct: 3,  warning: 2,  note: 'Poor palatability is the main limit. Keep low.' },
+      'Fish (Tilapia)':     { maxPct: 10, warning: 7,  note: 'Fish accept blood meal better than mammals. Good lysine source.' },
+      'Goat / Sheep':       { maxPct: 5,  warning: 4,  note: 'Same as cattle considerations.' },
+    }
+  },
+  // Fish meal — biogenic amines + scombrotoxin risk at high inclusions
+  'ing_4': {
+    factor: 'Biogenic Amines / Trimethylamine',
+    description: 'Poor quality fish meal contains histamine and TMA — causes fish taint in products',
+    limits: {
+      'Poultry (Broiler)':  { maxPct: 8,  warning: 6,  note: 'Max 8% for meat birds. Above 5% can cause fishy taint in meat.' },
+      'Poultry (Layer)':    { maxPct: 4,  warning: 3,  note: 'CRITICAL: Above 4% causes fishy taint in eggs — unmarketable.' },
+      'Poultry (Kienyeji)': { maxPct: 6,  warning: 4,  note: 'Same taint risk as layers above 4%.' },
+      'Swine':              { maxPct: 8,  warning: 6,  note: 'Can cause pork taint. Withdraw 2 weeks before slaughter.' },
+      'Dairy Cattle':       { maxPct: 5,  warning: 3,  note: 'Can cause fishy milk taint. Many farmers avoid entirely.' },
+      'Beef Cattle':        { maxPct: 8,  warning: 6,  note: 'Less taint risk in beef. Good protein source for young stock.' },
+      'Rabbit':             { maxPct: 5,  warning: 3,  note: 'Palatability issues at high levels. Keep below 5%.' },
+      'Fish (Tilapia)':     { maxPct: 15, warning: 10, note: 'Fish generally accept fish meal well.' },
+      'Goat / Sheep':       { maxPct: 5,  warning: 3,  note: 'Can cause off-flavour in milk. Use carefully in dairy goats.' },
+    }
+  },
+  // Wheat bran — phytate reduces mineral absorption
+  'ing_3': {
+    factor: 'Phytate (Phytic Acid)',
+    description: 'Binds calcium, zinc, iron — reduces mineral bioavailability',
+    limits: {
+      'Poultry (Broiler)':  { maxPct: 15, warning: 12, note: 'Phytase enzyme recommended above 10%. Reduces Ca/P availability.' },
+      'Poultry (Layer)':    { maxPct: 12, warning: 10, note: 'Can affect eggshell quality. Add phytase enzyme if using heavily.' },
+      'Poultry (Kienyeji)': { maxPct: 18, warning: 15, note: 'More tolerant than commercial birds.' },
+      'Swine':              { maxPct: 20, warning: 15, note: 'Add phytase above 15% to maintain mineral availability.' },
+      'Dairy Cattle':       { maxPct: 30, warning: 25, note: 'Rumen microbes partially break down phytate.' },
+      'Beef Cattle':        { maxPct: 30, warning: 25, note: 'Well tolerated. Good fibre source.' },
+      'Rabbit':             { maxPct: 20, warning: 15, note: 'Good fibre source. Hindgut fermentation helps break down phytate.' },
+      'Fish (Tilapia)':     { maxPct: 15, warning: 10, note: 'Phytate significantly reduces zinc absorption in fish.' },
+      'Goat / Sheep':       { maxPct: 30, warning: 25, note: 'Similar to cattle tolerance.' },
+    }
+  },
+  // Sunflower cake — chlorogenic acid reduces protein digestibility
+  'ing_5': {
+    factor: 'Chlorogenic Acid',
+    description: 'Reduces protein digestibility and causes discolouration',
+    limits: {
+      'Poultry (Broiler)':  { maxPct: 15, warning: 12, note: 'Chlorogenic acid reduces protein digestibility. High fibre limit use.' },
+      'Poultry (Layer)':    { maxPct: 12, warning: 10, note: 'Can cause egg discolouration.' },
+      'Poultry (Kienyeji)': { maxPct: 18, warning: 15, note: 'More tolerant.' },
+      'Swine':              { maxPct: 15, warning: 12, note: 'High fibre content limits use.' },
+      'Dairy Cattle':       { maxPct: 25, warning: 20, note: 'Good protein for ruminants. High in fibre.' },
+      'Beef Cattle':        { maxPct: 25, warning: 20, note: 'Good protein supplement.' },
+      'Rabbit':             { maxPct: 20, warning: 15, note: 'High fibre suitable for rabbits.' },
+      'Fish (Tilapia)':     { maxPct: 12, warning: 8,  note: 'Reduces feed palatability and growth.' },
+      'Goat / Sheep':       { maxPct: 25, warning: 20, note: 'Good protein for small ruminants.' },
+    }
+  },
+};
+
+// Get anti-nutritive limit for a specific ingredient + species
+function getANFLimit(ingId, species) {
+  const anf = ANTI_NUTRITIVE_FACTORS[ingId];
+  if (!anf) return null;
+  const limit = anf.limits[species];
+  if (!limit) return null;
+  return { ...anf, ...limit };
+}
+
+// Get effective max inclusion considering anti-nutritive factors
+function getEffectiveMaxIncl(ing, species) {
+  const base = ing.maxIncl !== undefined ? ing.maxIncl : 100;
+  const anf = getANFLimit(ing.id, species);
+  if (!anf) return base;
+  if (anf.maxPct === 0) return 0; // completely excluded
+  return Math.min(base, anf.maxPct);
+}
+
+// Check formula for anti-nutritive warnings
+function checkANFWarnings(formula, ingredients, species) {
+  const warnings = [];
+  const exclusions = [];
+  Object.entries(formula).forEach(([id, pct]) => {
+    const anf = getANFLimit(id, species);
+    if (!anf) return;
+    const ing = ingredients.find(i => i.id === id);
+    if (!ing) return;
+    if (anf.maxPct === 0) {
+      exclusions.push({ ingredient: ing.name, factor: anf.factor, note: anf.note });
+    } else if (pct > anf.maxPct) {
+      warnings.push({ ingredient: ing.name, factor: anf.factor, current: pct.toFixed(1), limit: anf.maxPct, note: anf.note, severity: 'danger' });
+    } else if (pct > anf.warning) {
+      warnings.push({ ingredient: ing.name, factor: anf.factor, current: pct.toFixed(1), limit: anf.maxPct, note: anf.note, severity: 'warning' });
+    }
+  });
+  return { warnings, exclusions };
+}
+
+
 // Build ingredient categories from CATEGORY_META
 function buildCategories(ingredients) {
   return CATEGORY_META.map(cat => ({
@@ -130,6 +305,7 @@ const NAV=[
   {key:'feeding_guide',icon:'🌾',label:'Feeding Guide'},
   {key:'education',icon:'📺',label:'Education Screen'},
   {key:'resources',icon:'📁',label:'Resources'},
+  {key:'traceability',icon:'🔍',label:'Traceability Log',admin:true},
   {key:'ingredients',icon:'🧂',label:'Ingredients',admin:true},
   {key:'nutrition',icon:'🔬',label:'Nutritional Reqs',admin:true},
   {key:'users',icon:'🔐',label:'Users',admin:true},
@@ -149,6 +325,8 @@ function LoginPage({onLogin}){
   const [msg,setMsg]=useState('');
   const [err,setErr]=useState('');
   const [loading,setLoading]=useState(false);
+  const [anfWarnings,setAnfWarnings]=useState([]);
+  const [anfExclusions,setAnfExclusions]=useState([]);
   const setE=e=>{setErr(e);setMsg('');};
   const setM=m=>{setMsg(m);setErr('');};
   const login=()=>{
@@ -271,17 +449,38 @@ function DashboardPage(){
 // ── INVENTORY ────────────────────────────────────────────────────────────────
 
 function InventoryPage(){
-  const {ingredients,inventory,setInventory,purchases,setPurchases}=useContext(Ctx);
+  const {ingredients,inventory,setInventory,purchases,setPurchases,user}=useContext(Ctx);
   const [showAdd,setShowAdd]=useState(false);
   const [ns,setNs]=useState({itemId:'',qty:'',costPerKg:'',date:today(),supplier:''});
   const catColor=cat=>CATEGORY_META.find(c=>c.key===cat)?.color||C.muted;
   const catIcon=cat=>CATEGORY_META.find(c=>c.key===cat)?.icon||'•';
+  const getSellPrice=(item)=>{
+    if(item.sellPriceDirect)return item.sellPriceDirect;
+    return Math.round((item.lastPrice||0)*(1+(item.margin||20)/100)*100)/100;
+  };
+  const [showPriceEdit,setShowPriceEdit]=useState(null);
+  const [priceMode,setPriceMode]=useState('margin');
+  const [marginVal,setMarginVal]=useState('20');
+  const [directPrice,setDirectPrice]=useState('');
+  const openPriceEdit=(item)=>{setShowPriceEdit(item);setPriceMode(item.sellPriceDirect?'direct':'margin');setMarginVal(String(item.margin||20));setDirectPrice(String(item.sellPriceDirect||getSellPrice(item)));};
+  const savePriceEdit=()=>{
+    if(!showPriceEdit)return;
+    const sp=priceMode==='direct'?parseFloat(directPrice):null;
+    const mg=priceMode==='margin'?parseFloat(marginVal):showPriceEdit.margin||20;
+    setInventory(inventory.map(i=>i.id===showPriceEdit.id?{...i,margin:mg,sellPriceDirect:sp||null,sellPrice:sp||Math.round((i.lastPrice||0)*(1+mg/100)*100)/100}:i));
+    setShowPriceEdit(null);
+  };
   const addStock=()=>{
     if(!ns.itemId||!ns.qty||!ns.costPerKg)return;
     const qty=parseFloat(ns.qty),cost=parseFloat(ns.costPerKg);
-    setInventory(inventory.map(i=>i.id===ns.itemId?{...i,qty:i.qty+qty,lastPrice:cost}:i));
     const item=inventory.find(i=>i.id===ns.itemId);
+    const sp=item?.sellPriceDirect||Math.round(cost*(1+(item?.margin||20)/100)*100)/100;
+    setInventory(inventory.map(i=>i.id===ns.itemId?{...i,qty:i.qty+qty,lastPrice:cost,sellPrice:sp}:i));
     setPurchases([...purchases,{id:uid(),itemId:ns.itemId,itemName:item?.name,qty,costPerKg:cost,total:qty*cost,date:ns.date,supplier:ns.supplier}]);
+    const ledger=db.get('stockLedger',[]);
+    const entry={id:uid(),type:'PURCHASE',date:ns.date,itemId:ns.itemId,itemName:item?.name,qty,costPerKg:cost,total:qty*cost,supplier:ns.supplier,by:user?.name};
+    db.set('stockLedger',[...ledger,entry]);
+    serverPush('stockLedger',[...ledger,entry]);
     setNs({itemId:'',qty:'',costPerKg:'',date:today(),supplier:''});setShowAdd(false);
   };
   return h('div',{style:{padding:'0 26px 26px'}},
@@ -297,11 +496,33 @@ function InventoryPage(){
         {key:'name',label:'Ingredient',render:r=>h('div',{style:{display:'flex',alignItems:'center',gap:8}},h('span',{style:{background:catColor(r.category)+'22',color:catColor(r.category),borderRadius:4,padding:'2px 6px',fontSize:11,fontWeight:700}},catIcon(r.category)),r.name)},
         {key:'category',label:'Type',render:r=>h(Badge,{color:catColor(r.category)},CATEGORY_META.find(c=>c.key===r.category)?.label||r.category)},
         {key:'qty',label:'In Stock',render:r=>h('span',{style:{fontFamily:"'DM Mono',monospace",fontWeight:700,color:r.qty<=r.reorderLevel?C.danger:C.grass}},`${fmt(r.qty)} kg`)},
-        {key:'lastPrice',label:'Last Price',render:r=>fmtKES(r.lastPrice||0)+'/kg'},
+        {key:'lastPrice',label:'Buy Price',render:r=>fmtKES(r.lastPrice||0)+'/kg'},
+        {key:'sellPrice',label:'Sell Price',render:r=>h('span',{style:{fontWeight:700,color:C.grass}},fmtKES(getSellPrice(r))+'/kg')},
+        {key:'margin',label:'Margin',render:r=>h('span',{style:{fontSize:11,color:C.muted}},r.sellPriceDirect?'Fixed':((r.margin||20)+'%'))},
         {key:'value',label:'Stock Value',render:r=>fmtKES(r.qty*(r.lastPrice||0))},
         {key:'reorderLevel',label:'Reorder At',render:r=>`${fmt(r.reorderLevel)} kg`},
         {key:'status',label:'Status',render:r=>h(Badge,{color:r.qty<=0?C.danger:r.qty<=r.reorderLevel?C.warning:C.grass},r.qty<=0?'Out of Stock':r.qty<=r.reorderLevel?'Low Stock':'OK')},
+        {key:'price_action',label:'',render:r=>h(Btn,{size:'sm',variant:'secondary',onClick:()=>openPriceEdit(r)},'💲 Price')},
       ],rows:inventory,emptyMsg:'No inventory items.'})),
+    showPriceEdit&&h(Modal,{title:'Set Sell Price — '+showPriceEdit.name,onClose:()=>setShowPriceEdit(null),width:440},
+      h('div',{style:{background:C.parchment,borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:C.soil}},
+        'Current Buy Price: ',h('strong',null,fmtKES(showPriceEdit.lastPrice||0)+'/kg')),
+      h('div',{style:{display:'flex',gap:0,marginBottom:14,borderRadius:8,overflow:'hidden',border:'1px solid '+C.border}},
+        ['margin','direct'].map(m=>h('button',{key:m,onClick:()=>setPriceMode(m),
+          style:{flex:1,padding:'9px 0',border:'none',cursor:'pointer',fontWeight:priceMode===m?700:400,
+            background:priceMode===m?C.earth:'white',color:priceMode===m?'white':C.muted,fontSize:13}},
+          m==='margin'?'📊 Margin %':'💲 Fixed Price'))),
+      priceMode==='margin'&&h('div',null,
+        Inp({label:'Margin %',value:marginVal,onChange:setMarginVal,type:'number',placeholder:'e.g. 20'}),
+        h('div',{style:{background:'#f0f9f4',borderRadius:8,padding:'10px 14px',fontSize:13,color:C.grass,fontWeight:700}},
+          'Sell Price = ',fmtKES(Math.round((showPriceEdit.lastPrice||0)*(1+(parseFloat(marginVal)||0)/100)*100)/100)+'/kg')),
+      priceMode==='direct'&&h('div',null,
+        Inp({label:'Direct Sell Price (KES/kg)',value:directPrice,onChange:setDirectPrice,type:'number'}),
+        directPrice&&(showPriceEdit.lastPrice>0)&&h('div',{style:{background:'#f0f9f4',borderRadius:8,padding:'10px 14px',fontSize:13,color:C.grass,fontWeight:700}},
+          'Implied Margin = ',Math.round(((parseFloat(directPrice||0)-(showPriceEdit.lastPrice||0))/(showPriceEdit.lastPrice||1))*100),'%')),
+      h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}},
+        h(Btn,{onClick:()=>setShowPriceEdit(null),variant:'secondary'},'Cancel'),
+        h(Btn,{onClick:savePriceEdit,variant:'success'},'Save Sell Price'))),
     h(Card,{style:{marginTop:15}},h(CardTitle,null,'Purchase History'),
       h(Tbl,{cols:[{key:'date',label:'Date'},{key:'itemName',label:'Ingredient'},{key:'qty',label:'Qty',render:r=>`${fmt(r.qty)} kg`},{key:'costPerKg',label:'Price/kg',render:r=>fmtKES(r.costPerKg)},{key:'total',label:'Total',render:r=>fmtKES(r.total)},{key:'supplier',label:'Supplier'}],rows:purchases.slice().reverse(),emptyMsg:'No purchases yet'})),
     showAdd&&h(Modal,{title:'Add Stock / Record Purchase',onClose:()=>setShowAdd(false)},
@@ -470,17 +691,53 @@ function FormulatorPage(){
   const statusSty=s=>({required:{border:`2px solid ${C.grass}`,background:'#f0f9f4'},recommended:{border:`2px solid ${C.savanna}`,background:'#fffbf0'},avoid:{border:`2px solid ${C.danger}`,background:'#fff0f0',opacity:0.65},neutral:{border:`1px solid ${C.border}`,background:'white'}}[s]);
   const toggleI=id=>{const n=new Set(selIngrs);n.has(id)?n.delete(id):n.add(id);setSelIngrs(n);};
   const getActive=()=>ingredients.filter(i=>selIngrs.has(i.id)).map(i=>({...i,price:parseFloat(prices[i.id]??i.price)}));
+  const getActiveWithANF=()=>ingredients.filter(i=>selIngrs.has(i.id)).map(i=>{
+    const base={...i,price:parseFloat(prices[i.id]??i.price)};
+    if(species){
+      const effMax=getEffectiveMaxIncl(base,species);
+      if(effMax===0)return null;
+      return{...base,maxIncl:Math.min(base.maxIncl??100,effMax)};
+    }
+    return base;
+  }).filter(Boolean);
+  // Auto-solve when species+stage selected
+  useEffect(()=>{
+    if(!species||!stage)return;
+    setLoading(true);
+    const timer=setTimeout(()=>{
+      const ingrs=getActiveWithANF();
+      const reqs=getReqForStage(animalReqs,species,stage);
+      if(!reqs){setLoading(false);return;}
+      const f=solveLeastCostLP(ingrs,reqs)||solveLeastCost(ingrs,reqs);
+      if(f){
+        const n=calcNutrients(f,ingrs);
+        const c=calcCost(f,ingrs);
+        setFormula(f);setNutrients(n);setCostPKg(c);
+        const {warnings,exclusions}=checkANFWarnings(f,ingrs,species);
+        setAnfWarnings(warnings);setAnfExclusions(exclusions);
+      } else {
+        showT('Could not solve — try enabling more ingredients or relaxing constraints.','error');
+      }
+      setLoading(false);
+    },400);
+    return()=>clearTimeout(timer);
+  },[species,stage]);
+
   const doFormulate=()=>{
     if(!species||!stage)return;
     setLoading(true);
     setTimeout(()=>{
-      const ingrs=getActive();
+      const ingrs=getActiveWithANF();
       const reqs=getReqForStage(animalReqs,species,stage);
-      const f=solveLeastCost(ingrs,reqs);
-      if(f){const n=calcNutrients(f,ingrs);const c=calcCost(f,ingrs);setFormula(f);setNutrients(n);setCostPKg(c);}
-      else showT('Could not solve — try selecting more ingredients.','error');
+      const f=solveLeastCostLP(ingrs,reqs)||solveLeastCost(ingrs,reqs);
+      if(f){
+        const n=calcNutrients(f,ingrs);const c=calcCost(f,ingrs);
+        setFormula(f);setNutrients(n);setCostPKg(c);
+        const {warnings,exclusions}=checkANFWarnings(f,ingrs,species);
+        setAnfWarnings(warnings);setAnfExclusions(exclusions);
+      } else showT('Could not solve — try selecting more ingredients.','error');
       setLoading(false);
-    },600);
+    },400);
   };
   const doSaveFormula=()=>{
     if(!formula||!fName)return;
@@ -548,8 +805,16 @@ function FormulatorPage(){
       // RIGHT
       h('div',null,
         formula&&nutrients&&reqs?h('div',null,
-          // anti-nutritive warnings from selected ingredients
-          Object.keys(formula).map(id=>{const i=ingredients.find(x=>x.id===id);return i?.antiNote?h('div',{key:id,style:{background:'#fff8e6',border:`1px solid ${C.harvest}`,borderRadius:8,padding:'9px 13px',marginBottom:9,fontSize:12,color:C.soil}},'⚠ ',h('strong',null,i.name,': '),i.antiNote):null;}),
+          // Anti-nutritive factor warnings (NRC/ILRI standards)
+          [...anfWarnings,...anfExclusions.map(e=>({...e,severity:'danger',current:'included',maxPct:0}))].map((w,i)=>
+            h('div',{key:i,style:{display:'flex',gap:10,padding:'9px 13px',borderRadius:8,marginBottom:6,
+              background:w.severity==='danger'?'#fde8e8':'#fff8e6',
+              border:'1px solid '+(w.severity==='danger'?C.danger:C.harvest)+'55'}},
+              h('span',{style:{fontSize:16}},w.severity==='danger'?'🚫':'⚠️'),
+              h('div',null,
+                h('div',{style:{fontWeight:700,fontSize:12,color:w.severity==='danger'?C.danger:C.savanna}},
+                  w.ingredient+(w.maxPct===0?' — EXCLUDED for this species':' — '+w.factor+' at '+w.current+'% (limit: '+w.maxPct+'%)')),
+                h('div',{style:{fontSize:11,color:C.muted,marginTop:2,lineHeight:1.5}},w.note))))
           h(Card,{style:{marginBottom:13}},
             h('div',{style:{background:`linear-gradient(135deg,${C.earth},${C.soil})`,padding:'15px 19px',display:'flex',justifyContent:'space-between',alignItems:'center'}},
               h('div',null,
@@ -1153,6 +1418,63 @@ function ResourcesPage(){
           h('input',{type:'file',accept:'.csv',onChange:importIngredients,style:{display:'none'}})))));
 }
 
+function TraceabilityPage(){
+  const {user}=useContext(Ctx);
+  const [ledger,setLedger]=useState(()=>db.get('stockLedger',[]));
+  const [filter,setFilter]=useState('ALL');
+  const [search,setSearch]=useState('');
+
+  useEffect(()=>{
+    const sv=db.get('stockLedger',[]);
+    setLedger(sv||[]);
+  },[]);
+
+  const typeColor={
+    PURCHASE:C.grass, SALE:C.savanna, DELETE_PURCHASE:C.danger,
+    DELETE_SALE:C.danger, DELETE_INGREDIENT:C.danger, PRICE_CHANGE:C.clay,
+    ADJ:C.soil, VOID:C.danger,
+  };
+  const typeLabel={
+    PURCHASE:'Stock In', SALE:'Sale', DELETE_PURCHASE:'Purchase Deleted',
+    DELETE_SALE:'Sale Deleted', DELETE_INGREDIENT:'Ingredient Deleted',
+    PRICE_CHANGE:'Price Changed', ADJ:'Adjustment', VOID:'Voided',
+  };
+
+  const types=['ALL','PURCHASE','SALE','DELETE_PURCHASE','DELETE_SALE','DELETE_INGREDIENT','PRICE_CHANGE','ADJ'];
+  const filtered=ledger.filter(e=>{
+    if(filter!=='ALL'&&e.type!==filter)return false;
+    if(search&&!JSON.stringify(e).toLowerCase().includes(search.toLowerCase()))return false;
+    return true;
+  }).sort((a,b)=>b.date>a.date?1:-1);
+
+  return h('div',{style:{padding:'0 26px 26px'}},
+    h(PageHdr,{title:'Traceability Log',subtitle:'Full audit trail of all stock movements, sales and deleted records'}),
+    h('div',{style:{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}},
+      h('input',{value:search,onChange:e=>setSearch(e.target.value),placeholder:'Search logs...',
+        style:{flex:1,minWidth:200,padding:'8px 12px',border:'1px solid '+C.border,borderRadius:8,fontSize:13,background:C.cream}}),
+      types.map(t=>h(Btn,{key:t,size:'sm',variant:filter===t?'primary':'secondary',onClick:()=>setFilter(t)},
+        t==='ALL'?'All ('+ledger.length+')':(typeLabel[t]||t)))),
+    h(Card,null,
+      filtered.length===0?h('div',{style:{textAlign:'center',padding:40,color:C.muted}},'No records found'):
+      h('div',{style:{overflowX:'auto'}},
+        h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:12}},
+          h('thead',null,h('tr',null,
+            ['Date','Type','Item','Qty','Value','By','Details'].map((col,i)=>
+              h('th',{key:i,style:{padding:'8px 10px',background:C.earth,color:'white',textAlign:'left',fontSize:10,textTransform:'uppercase',letterSpacing:1,whiteSpace:'nowrap'}},col)))),
+          h('tbody',null,filtered.map((e,i)=>
+            h('tr',{key:e.id||i,style:{borderBottom:'1px solid '+C.border,background:i%2===0?C.cream:'white'}},
+              h('td',{style:{padding:'8px 10px',whiteSpace:'nowrap',color:C.muted,fontSize:11}},e.date||e.at?.slice(0,10)||'—'),
+              h('td',{style:{padding:'8px 10px'}},h('span',{style:{background:(typeColor[e.type]||C.muted)+'22',color:typeColor[e.type]||C.muted,padding:'2px 8px',borderRadius:12,fontSize:10,fontWeight:700,whiteSpace:'nowrap'}},typeLabel[e.type]||e.type)),
+              h('td',{style:{padding:'8px 10px',fontWeight:600,color:C.earth}},e.itemName||e.product||'—'),
+              h('td',{style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace"}},e.qty!=null?(e.qty>0?'+':'')+fmt(e.qty)+' kg':'—'),
+              h('td',{style:{padding:'8px 10px',fontFamily:"'DM Mono',monospace"}},e.total?fmtKES(e.total):'—'),
+              h('td',{style:{padding:'8px 10px',fontSize:11,color:C.muted}},e.by||'—'),
+              h('td',{style:{padding:'8px 10px',fontSize:11,color:C.muted,maxWidth:300}},
+                e.deletedRecord?h('details',null,h('summary',{style:{cursor:'pointer',color:C.danger}},'View deleted record'),h('pre',{style:{fontSize:10,marginTop:4,whiteSpace:'pre-wrap',wordBreak:'break-all'}},e.deletedRecord)):
+                e.notes||e.supplier||'—'))))))));
+}
+
+
 export default function Pages({ page, setPage, user, onLogin, onLogout, sidebarOpen, setSidebarOpen }) {
   const ctx = useContext(Ctx);
   const animalReqs = ctx?.animalReqs;
@@ -1169,6 +1491,7 @@ export default function Pages({ page, setPage, user, onLogin, onLogout, sidebarO
     feeding_guide: h(FeedingGuidePage, null),
     education:     h(EducationPage, null),
     resources:     h(ResourcesPage, null),
+    traceability:  user.role==='admin'?h(TraceabilityPage,null):h(DashboardPage,null),
     ingredients:   user.role === "admin" ? h(IngredientsPage, null) : h(DashboardPage, null),
     nutrition:     user.role === "admin" ? h(NutritionPage, null)   : h(DashboardPage, null),
     users:         user.role === "admin" ? h(UsersPage, { currentUser: user }) : h(DashboardPage, null),
