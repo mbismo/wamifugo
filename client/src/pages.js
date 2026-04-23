@@ -6,11 +6,25 @@ import { C, uid, today, dateRange, fmt, fmtKES } from "./utils.js";
 import {
   SEED_USERS, SEED_ANIMAL_REQS, SEED_INGREDIENT_PROFILES,
   CATEGORY_META, CATEGORY_ICONS, FEEDING_QTY, TIPS, SPECIES_RECS,
-  getAnimalReqs, buildSpeciesList, getStagesForCategory, getReqForStage
+  getAnimalReqs, getAnimalCategories, buildSpeciesList, getStagesForCategory, getReqForStage
 } from "./constants.js";
 import { solveLeastCost, solveLeastCostLP, calcNutrients, calcCost } from "./solver.js";
 
 const h = React.createElement;
+
+// Build ingredient categories from CATEGORY_META
+function buildCategories(ingredients) {
+  return CATEGORY_META.map(cat => ({
+    ...cat,
+    items: ingredients.filter(i => (i.category || 'energy') === cat.key)
+  }));
+}
+
+// Animal requirements persistence
+function setAnimalReqs(v) {
+  db.set('animalReqs', v);
+  serverPush('animalReqs', v);
+}
 
 // Server push — fire and forget, never blocks the UI
 async function serverPush(col, data) {
@@ -948,10 +962,10 @@ function NutritionPage(){
 
 function UsersPage({currentUser}){
   const [users,setUsersState]=useState(()=>db.get('users',SEED_USERS));
-  useEffect(()=>{pullUsersFromServer().then(sv=>{if(sv&&sv.length)setUsersState(sv);});},[]);
+  useEffect(()=>{fetch("/api/data/users",{headers:{"X-Sync-Key":import.meta.env?.VITE_SYNC_KEY||"wamifugo2024"}}).then(r=>r.json()).then(d=>{if(d.data&&d.data.length){db.set("users",d.data);setUsersState(d.data);}}).catch(()=>{});},[]);
   const [showAdd,setShowAdd]=useState(false);
   const [form,setForm]=useState({name:'',username:'',password:'',role:'staff'});
-  const saveUsers=next=>{setUsersState(next);db.set('users',next);pushUsersToServer(next);};
+  const saveUsers=next=>{setUsersState(next);db.set('users',next);serverPush("users",next);};
   const addUser=()=>{if(!form.name||!form.username||!form.password)return;saveUsers([...users,{...form,id:uid(),active:true,created:today()}]);setShowAdd(false);setForm({name:'',username:'',password:'',role:'staff'});};
   return h('div',{style:{padding:'0 26px 26px'}},
     h(PageHdr,{title:'User Management',subtitle:'Control system access and permissions',action:h(Btn,{onClick:()=>setShowAdd(true)},'+ New User')}),
