@@ -24,9 +24,12 @@ async function serverPush(col, data) {
     if (!res.ok) {
       const txt = await res.text().catch(function() { return ''; });
       console.warn('Server push failed:', col, res.status, txt);
+      return { ok: false, status: res.status, error: txt };
     }
+    return { ok: true };
   } catch (e) {
     console.warn('Server push failed:', col, e.message);
+    return { ok: false, error: e.message };
   }
 }
 
@@ -1714,7 +1717,7 @@ function FormulatorPage(props) {
     }, 300);
   }
 
-  function doSaveFormula() {
+  async function doSaveFormula() {
     if (!formula || !fName) return;
     const saved = (ctx.savedFormulas && ctx.savedFormulas.length) ? ctx.savedFormulas : db.get('savedFormulas', []);
     const rec = {
@@ -1729,10 +1732,14 @@ function FormulatorPage(props) {
       ctx.setSavedFormulas(next);
     } else {
       db.set('savedFormulas', next);
-      serverPush('savedFormulas', next);
     }
+    const r = await serverPush('savedFormulas', next);
     setShowSave(false); setFName('');
-    showT('Formula saved');
+    if (r && r.ok) {
+      showT('Formula saved');
+    } else {
+      showT('Warning: saved locally only. Server is unreachable.', 'error');
+    }
   }
 
   function doSaveFormula_SubSpec() {
@@ -1765,27 +1772,36 @@ function FormulatorPage(props) {
     const ingrs = getActiveWithANF();
     const items = Object.entries(srcFormula).map(function(entry) {
       const id = entry[0], pct = entry[1];
+      // Find ingredient definition: active ANF list first, then full ingredients
       const ing = ingrs.find(function(x) { return x.id === id; }) || ingredients.find(function(x) { return x.id === id; });
       const inv = inventory.find(function(x) { return x.id === id; });
       const sp = getSellPriceForIng(ing || { id: id });
-      const buyPrice = inv ? (inv.lastPrice || 0) : 0;
+      // Buy price: prefer inventory lastPrice, fall back to ingredient master price,
+      // then to the ingredient's own price field. If STILL zero, we'll flag it.
+      let buyPrice = 0;
+      if (inv && inv.lastPrice) buyPrice = inv.lastPrice;
+      else if (ing && ing.lastPrice) buyPrice = ing.lastPrice;
+      else if (ing && ing.price) buyPrice = ing.price;
       return {
-        id: id, name: ing ? ing.name : '',
+        id: id, name: ing ? ing.name : '(unknown)',
         pct: pct, qty: (pct / 100) * batchKg,
         sellPricePerKg: sp,
         buyPricePerKg: buyPrice,
-        pricePerKg: sp // legacy
+        pricePerKg: sp, // legacy
+        missingBuyPrice: buyPrice === 0
       };
     });
     const totalSellValue = items.reduce(function(s, i) { return s + i.qty * i.sellPricePerKg; }, 0);
     const totalBuyCost = items.reduce(function(s, i) { return s + i.qty * i.buyPricePerKg; }, 0);
+    const missingCount = items.filter(function(i) { return i.missingBuyPrice; }).length;
     setPendingSale({
       items: items,
       totalSellValue: totalSellValue,
       totalBuyCost: totalBuyCost,
       totalCost: totalBuyCost, // legacy field
       subSpec: !!isSubSpec,
-      srcFormula: srcFormula
+      srcFormula: srcFormula,
+      missingBuyPriceCount: missingCount
     });
     setShowSell(true);
   }
@@ -2036,6 +2052,7 @@ function FormulatorPage(props) {
       const totalBuyCost = pendingSale.totalBuyCost;
       const profit = totalRevenue - totalBuyCost;
       const marginPct = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
+      const hasMissingBuyPrice = (pendingSale.missingBuyPriceCount || 0) > 0;
       return h('div', {
         style: { background: '#f0f9f4', borderRadius: 10, padding: '12px 16px', fontSize: 13, border: '1px solid ' + C.leaf + '44' }
       },
@@ -2043,6 +2060,12 @@ function FormulatorPage(props) {
           h('span', null, 'Total Revenue (' + batchKg + 'kg x KES ' + selPrice + '): '),
           h('strong', { style: { color: C.grass, fontFamily: "'DM Mono',monospace" } },
             'KES ' + totalRevenue.toFixed(2))
+        ),
+        h('div', { style: { marginBottom: 6 } },
+          h('span', null, 'Total Buy Cost: '),
+          h('strong', {
+            style: { color: C.earth, fontFamily: "'DM Mono',monospace" }
+          }, 'KES ' + totalBuyCost.toFixed(2))
         ),
         h('div', { style: { marginBottom: 6 } },
           h('span', null, 'Profit (revenue - buy cost): '),
@@ -2061,7 +2084,20 @@ function FormulatorPage(props) {
               fontFamily: "'DM Mono',monospace"
             }
           }, marginPct.toFixed(1) + '%')
-        )
+        ),
+        hasMissingBuyPrice ? h('div', {
+          style: {
+            marginTop: 10, padding: '8px 11px', background: '#fff4e0',
+            border: '1px solid ' + C.warning + '77', borderRadius: 8,
+            color: C.earth, fontSize: 12, lineHeight: 1.5
+          }
+        },
+          h('strong', { style: { color: C.warning } }, '\u{26A0} Profit may be overestimated. '),
+          pendingSale.missingBuyPriceCount + ' ingredient' +
+          (pendingSale.missingBuyPriceCount === 1 ? '' : 's') +
+          ' in this mix ' + (pendingSale.missingBuyPriceCount === 1 ? 'has' : 'have') +
+          ' no recorded buy price. Record a purchase in Inventory to fix this.'
+        ) : null
       );
     })() : null,
     h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
@@ -3412,10 +3448,13 @@ function UsersPage(props) {
       .catch(function() {});
   }, []);
 
-  function saveUsers(next) {
+  async function saveUsers(next) {
     setUsersState(next);
     db.set('users', next);
-    serverPush('users', next);
+    const r = await serverPush('users', next);
+    if (!r || !r.ok) {
+      showT('Warning: could not save to server. Changes may be lost on refresh.', 'error');
+    }
   }
 
   const [showAdd, setShowAdd] = useState(false);
@@ -3429,14 +3468,14 @@ function UsersPage(props) {
   const [confirmPwd, setConfirmPwd] = useState('');
   const [currentPwd, setCurrentPwd] = useState('');
 
-  function addUser() {
+  async function addUser() {
     if (!form.name || !form.username || !form.password) return;
     if (users.find(function(u) { return u.username === form.username; })) {
       showT('Username already exists', 'error');
       return;
     }
     const next = users.concat([Object.assign({}, form, { id: uid(), created: today(), active: true })]);
-    saveUsers(next);
+    await saveUsers(next);
     setForm({ name: '', username: '', password: '', email: '', role: 'staff' });
     setShowAdd(false);
     showT('User created');

@@ -59,8 +59,11 @@ app.post('/api/data/:collection', checkKey, async (req, res) => {
   if (data === undefined) return res.status(400).json({ error: 'Missing data field' });
   try {
     const saved_ts = db.setCollection(collection, data, ts);
+    const len = Array.isArray(data) ? data.length : 'n/a';
+    console.log(`[write] ${collection}: ${len} items saved at ${new Date(saved_ts).toISOString()}`);
     res.json({ ok: true, collection, ts: saved_ts });
   } catch (err) {
+    console.error(`[write FAIL] ${collection}:`, err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1755,7 +1758,37 @@ app.post('/api/seed', checkKey, (req, res) => {
 
 // ── HEALTH CHECK ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const DATA_DIR = process.env.DATA_DIR || 'default';
+  let dataDirExists = false, writable = false, counts = {};
+  try {
+    dataDirExists = fs.existsSync(DATA_DIR);
+    // Test writability
+    try {
+      const testFile = path.join(DATA_DIR, '.healthcheck');
+      fs.writeFileSync(testFile, String(Date.now()));
+      fs.unlinkSync(testFile);
+      writable = true;
+    } catch (e) {
+      writable = false;
+    }
+    // Per-collection record counts
+    const COLS = ['inventory','purchases','sales','customers','stockLedger','ingredients','users','animalReqs','savedFormulas'];
+    for (const c of COLS) {
+      try {
+        const r = db.getCollection(c);
+        counts[c] = Array.isArray(r.data) ? r.data.length : 0;
+      } catch { counts[c] = -1; }
+    }
+  } catch (e) {}
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    dataDir: DATA_DIR,
+    dataDirExists: dataDirExists,
+    writable: writable,
+    counts: counts,
+    uptime: process.uptime()
+  });
 });
 
 // ── SERVE REACT BUILD ─────────────────────────────────────────────────────────

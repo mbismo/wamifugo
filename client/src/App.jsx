@@ -20,7 +20,13 @@ async function serverPullAll() {
 }
 async function serverPush(col, data) {
   db.set(col, data);
-  try { await pushCollection(col, data); } catch(e) { console.warn("Push failed:", e.message); }
+  try {
+    await pushCollection(col, data);
+    return { ok: true };
+  } catch(e) {
+    console.warn("Push failed:", col, e.message);
+    return { ok: false, error: e.message };
+  }
 }
 
 // Animal requirements — read from localStorage cache or seed
