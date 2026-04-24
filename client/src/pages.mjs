@@ -1735,11 +1735,37 @@ function FormulatorPage(props) {
     showT('Formula saved');
   }
 
-  function doInitSale() {
+  function doSaveFormula_SubSpec() {
+    if (!diagnosticFormula) return;
+    const name = window.prompt('Save this sub-spec formula as (e.g. "Budget broiler starter"):', '');
+    if (!name) return;
+    const saved = (ctx.savedFormulas && ctx.savedFormulas.length) ? ctx.savedFormulas : db.get('savedFormulas', []);
+    const diagNutrients = calcNutrients(diagnosticFormula, ingredients);
+    const diagCost = calcCost(diagnosticFormula, ingredients);
+    const rec = {
+      id: uid(), name: name, species: species, stage: stage,
+      formula: diagnosticFormula, nutrients: diagNutrients, costPerKg: diagCost,
+      customerId: custId || null,
+      customerName: (customers.find(function(c) { return c.id === custId; }) || {}).name || '-',
+      savedOn: today(), batchKg: batchKg,
+      subSpec: true
+    };
+    const next = saved.concat([rec]);
+    if (ctx.setSavedFormulas) {
+      ctx.setSavedFormulas(next);
+    } else {
+      db.set('savedFormulas', next);
+      serverPush('savedFormulas', next);
+    }
+    showT('Sub-spec formula saved');
+  }
+
+  // Shared sale initializer - used by both feasible and sub-spec paths
+  function initSaleWithFormula(srcFormula, isSubSpec) {
     const ingrs = getActiveWithANF();
-    const items = Object.entries(formula).map(function(entry) {
+    const items = Object.entries(srcFormula).map(function(entry) {
       const id = entry[0], pct = entry[1];
-      const ing = ingrs.find(function(x) { return x.id === id; });
+      const ing = ingrs.find(function(x) { return x.id === id; }) || ingredients.find(function(x) { return x.id === id; });
       const inv = inventory.find(function(x) { return x.id === id; });
       const sp = getSellPriceForIng(ing || { id: id });
       const buyPrice = inv ? (inv.lastPrice || 0) : 0;
@@ -1757,9 +1783,21 @@ function FormulatorPage(props) {
       items: items,
       totalSellValue: totalSellValue,
       totalBuyCost: totalBuyCost,
-      totalCost: totalBuyCost // legacy field
+      totalCost: totalBuyCost, // legacy field
+      subSpec: !!isSubSpec,
+      srcFormula: srcFormula
     });
     setShowSell(true);
+  }
+
+  function doInitSale() {
+    if (!formula) return;
+    initSaleWithFormula(formula, false);
+  }
+
+  function doInitSale_SubSpec() {
+    if (!diagnosticFormula) return;
+    initSaleWithFormula(diagnosticFormula, true);
   }
 
   function doConfirmSale() {
@@ -1780,12 +1818,13 @@ function FormulatorPage(props) {
     const agreedTotal = parseFloat(selPrice) * batchKg;
     const cust = customers.find(function(c) { return c.id === custId; });
     const profit = agreedTotal - pendingSale.totalBuyCost;
+    const isSubSpec = !!pendingSale.subSpec;
     const newSale = {
       id: uid(), date: today(), species: species, stage: stage, batchKg: batchKg,
       customerId: custId || null,
       customerName: cust ? cust.name : 'Walk-in',
       customer: cust ? cust.name : 'Walk-in',
-      product: species + ' - ' + stage + ' (' + batchKg + 'kg)',
+      product: species + ' - ' + stage + (isSubSpec ? ' (SUB-SPEC)' : '') + ' (' + batchKg + 'kg)',
       cost: pendingSale.totalBuyCost,
       total: agreedTotal,
       totalRevenue: agreedTotal,
@@ -1793,19 +1832,20 @@ function FormulatorPage(props) {
       profit: profit,
       sellPricePerKg: parseFloat(selPrice),
       items: pendingSale.items,
-      formula: formula
+      formula: pendingSale.srcFormula || formula,
+      subSpec: isSubSpec
     };
     setSales(sales.concat([newSale]));
     const ledger = db.get('stockLedger', []);
     const entry = {
-      id: uid(), type: 'SALE', date: today(), product: newSale.product,
+      id: uid(), type: isSubSpec ? 'SALE-SUBSPEC' : 'SALE', date: today(), product: newSale.product,
       qty: batchKg, total: agreedTotal,
       by: user ? user.name : ''
     };
     db.set('stockLedger', ledger.concat([entry]));
     serverPush('stockLedger', ledger.concat([entry]));
     setShowSell(false); setPendingSale(null); setSelPrice('');
-    showT('Sale recorded. Stock updated.');
+    showT(isSubSpec ? 'Sub-spec sale recorded.' : 'Sale recorded. Stock updated.');
   }
 
   function getANFStatus(id) {
@@ -1934,10 +1974,26 @@ function FormulatorPage(props) {
   ) : null;
 
   const sellModal = (showSell && pendingSale) ? h(Modal, {
-    title: 'Confirm Sale',
+    title: pendingSale.subSpec ? 'Confirm Sub-Spec Sale' : 'Confirm Sale',
     onClose: function() { setShowSell(false); },
     width: 520
   },
+    // Sub-spec warning banner
+    pendingSale.subSpec ? h('div', {
+      style: {
+        background: '#fff4e0',
+        border: '2px solid ' + C.warning,
+        borderRadius: 10,
+        padding: '10px 14px',
+        marginBottom: 14,
+        fontSize: 12,
+        color: C.ink,
+        lineHeight: 1.5
+      }
+    },
+      h('strong', { style: { color: C.warning, fontSize: 13 } }, '\u{26A0} Sub-Spec Mix'),
+      h('div', { style: { marginTop: 4 } }, 'This mix does not meet all nutritional targets. You are selling it on your own judgement. The sale will be tagged as sub-spec in records.')
+    ) : null,
     h('div', {
       style: { background: C.parchment, borderRadius: 10, padding: '12px 16px', marginBottom: 14 }
     },
@@ -2084,9 +2140,13 @@ function FormulatorPage(props) {
     )
   ) : null;
 
+  // Calculate nutrients achieved by the diagnostic formula (if present)
+  const diagnosticNutrients = diagnosticFormula ? calcNutrients(diagnosticFormula, ingredients) : null;
+  const diagnosticCost = diagnosticFormula ? calcCost(diagnosticFormula, ingredients) : 0;
+
   // INFEASIBILITY CARD — shown when nutrition cannot be met
   const infeasibleCard = infeasibleReason ? h(Card, {
-    style: { marginBottom: 14, border: '3px solid ' + C.danger, background: '#fde8e8' }
+    style: { marginBottom: 14, border: '3px solid ' + C.danger }
   },
     h('div', {
       style: {
@@ -2100,19 +2160,20 @@ function FormulatorPage(props) {
       }, '\u{26A0} Cannot Meet Nutritional Requirements'),
       h('div', { style: { fontSize: 13, opacity: 0.95 } }, infeasibleReason)
     ),
-    h('div', { style: { padding: '16px 20px' } },
+    h('div', { style: { padding: '16px 20px', background: '#fde8e8' } },
       h('div', {
-        style: { fontSize: 13, color: C.ink, marginBottom: 12, lineHeight: 1.6 }
+        style: { fontSize: 13, color: C.ink, marginBottom: 14, lineHeight: 1.6 }
       },
-        h('strong', null, 'No formula will be shown or sold. '),
-        'Selling an under-specified feed would harm the animals. Review the gaps below, add missing ingredients to stock, then try again.'),
-      // Gap details
-      Object.keys(anfWarnings).length > 0 || anfWarnings.length > 0 ? h('div', {
-        style: { background: 'white', borderRadius: 8, padding: '12px 14px', marginBottom: 10, border: '1px solid ' + C.border }
+        h('strong', null, 'This formula CANNOT be sold. '),
+        'Selling an under-specified feed would harm the animals. Review the gaps and the best-achievable mix below to decide what to purchase.'),
+
+      // Gaps detail
+      anfWarnings.length > 0 ? h('div', {
+        style: { background: 'white', borderRadius: 8, padding: '12px 14px', marginBottom: 14, border: '1px solid ' + C.danger + '66' }
       },
         h('div', {
           style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5, color: C.danger, marginBottom: 8, fontFamily: "'DM Mono',monospace" }
-        }, 'Gaps'),
+        }, 'Why it won\'t work'),
         anfWarnings.map(function(w, i) {
           return h('div', {
             key: i,
@@ -2125,33 +2186,162 @@ function FormulatorPage(props) {
             w.note
           );
         })
-      ) : null,
-      // Option to view the diagnostic mix (NOT sellable)
-      diagnosticFormula ? h('details', { style: { marginTop: 10 } },
-        h('summary', {
-          style: { cursor: 'pointer', fontSize: 12, color: C.muted, fontStyle: 'italic' }
-        }, 'Show closest-possible mix (NOT safe to sell)'),
-        h('div', {
-          style: { background: '#fff8e6', borderRadius: 8, padding: '10px 12px', marginTop: 8, fontSize: 11 }
-        },
-          h('div', {
-            style: { fontWeight: 700, color: C.warning, marginBottom: 6 }
-          }, 'This is what the closest mix would look like. It violates nutrition targets and is shown for reference only.'),
-          Object.entries(diagnosticFormula)
-            .sort(function(a, b) { return b[1] - a[1]; })
-            .map(function(entry, i) {
-              const ing = ingredients.find(function(x) { return x.id === entry[0]; });
-              return h('div', {
-                key: i,
-                style: { display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontFamily: "'DM Mono',monospace" }
-              },
-                h('span', null, ing ? ing.name : entry[0]),
-                h('span', { style: { fontWeight: 700 } }, entry[1].toFixed(1) + '%')
-              );
-            })
-        )
       ) : null
-    )
+    ),
+
+    // Best-achievable mix panel
+    diagnosticFormula && diagnosticNutrients ? h('div', null,
+      h('div', {
+        style: {
+          background: 'linear-gradient(135deg,' + C.warning + ',#c15e00)',
+          padding: '12px 20px',
+          color: 'white',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }
+      },
+        h('div', null,
+          h('div', {
+            style: { fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 700 }
+          }, '\u{1F4CB} Best Achievable Mix'),
+          h('div', {
+            style: { fontSize: 11, opacity: 0.95, marginTop: 2 }
+          }, 'Closest possible to your targets \u{2022} NOT SAFE TO SELL')
+        ),
+        h('div', {
+          style: {
+            padding: '6px 14px',
+            background: 'rgba(0,0,0,0.25)',
+            borderRadius: 20,
+            fontSize: 11,
+            fontWeight: 700,
+            fontFamily: "'DM Mono',monospace",
+            letterSpacing: 1.5,
+            textTransform: 'uppercase'
+          }
+        }, 'NOT SELLABLE')
+      ),
+      // Ingredient table
+      h('div', { style: { padding: '14px 20px', background: 'white' } },
+        h('div', {
+          style: { fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, fontFamily: "'DM Mono',monospace" }
+        }, 'Ingredients (' + batchKg + ' kg batch)'),
+        h('table', {
+          style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 }
+        },
+          h('thead', null,
+            h('tr', { style: { borderBottom: '2px solid ' + C.border } },
+              h('th', { style: { textAlign: 'left', padding: '6px 8px', fontSize: 11, color: C.muted, fontFamily: "'DM Mono',monospace", textTransform: 'uppercase', letterSpacing: 1 } }, 'Ingredient'),
+              h('th', { style: { textAlign: 'right', padding: '6px 8px', fontSize: 11, color: C.muted, fontFamily: "'DM Mono',monospace", textTransform: 'uppercase', letterSpacing: 1 } }, '%'),
+              h('th', { style: { textAlign: 'right', padding: '6px 8px', fontSize: 11, color: C.muted, fontFamily: "'DM Mono',monospace", textTransform: 'uppercase', letterSpacing: 1 } }, 'kg')
+            )
+          ),
+          h('tbody', null,
+            Object.entries(diagnosticFormula)
+              .sort(function(a, b) { return b[1] - a[1]; })
+              .map(function(entry, i) {
+                const ing = ingredients.find(function(x) { return x.id === entry[0]; });
+                const kg = entry[1] * batchKg / 100;
+                return h('tr', {
+                  key: i,
+                  style: { borderBottom: '1px solid ' + C.border, background: i % 2 === 0 ? 'white' : C.cream }
+                },
+                  h('td', { style: { padding: '7px 8px', color: C.earth, fontWeight: 600 } }, ing ? ing.name : entry[0]),
+                  h('td', { style: { padding: '7px 8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 700 } }, entry[1].toFixed(2) + '%'),
+                  h('td', { style: { padding: '7px 8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: C.muted } }, kg.toFixed(2))
+                );
+              })
+          )
+        )
+      ),
+
+      // Nutrient comparison — targets vs achieved with gap highlighting
+      h('div', { style: { padding: '14px 20px', background: C.cream, borderTop: '1px solid ' + C.border } },
+        h('div', {
+          style: { fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, fontFamily: "'DM Mono',monospace" }
+        }, 'Nutrients achieved vs targets'),
+        h('table', {
+          style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 }
+        },
+          h('thead', null,
+            h('tr', { style: { borderBottom: '2px solid ' + C.border } },
+              h('th', { style: { textAlign: 'left', padding: '5px 8px', fontSize: 10, color: C.muted, fontFamily: "'DM Mono',monospace", textTransform: 'uppercase', letterSpacing: 1 } }, 'Nutrient'),
+              h('th', { style: { textAlign: 'right', padding: '5px 8px', fontSize: 10, color: C.muted, fontFamily: "'DM Mono',monospace", textTransform: 'uppercase', letterSpacing: 1 } }, 'Target'),
+              h('th', { style: { textAlign: 'right', padding: '5px 8px', fontSize: 10, color: C.muted, fontFamily: "'DM Mono',monospace", textTransform: 'uppercase', letterSpacing: 1 } }, 'Achieved'),
+              h('th', { style: { textAlign: 'center', padding: '5px 8px', fontSize: 10, color: C.muted, fontFamily: "'DM Mono',monospace", textTransform: 'uppercase', letterSpacing: 1 } }, 'Status')
+            )
+          ),
+          h('tbody', null,
+            (function() {
+              const NUT_INFO = [
+                { key: 'cp', label: 'Crude Protein', unit: '%' },
+                { key: 'me', label: 'Metabolisable Energy', unit: 'kcal/kg' },
+                { key: 'ca', label: 'Calcium', unit: '%' },
+                { key: 'p', label: 'Phosphorus', unit: '%' },
+                { key: 'lys', label: 'Lysine', unit: '%' },
+                { key: 'met', label: 'Methionine', unit: '%' }
+              ];
+              return NUT_INFO.filter(function(n) {
+                return reqs && reqs[n.key] && Array.isArray(reqs[n.key]);
+              }).map(function(nut, i) {
+                const tgt = reqs[nut.key];
+                const val = diagnosticNutrients[nut.key];
+                const ok = val >= tgt[0] * 0.99 && val <= tgt[1] * 1.01;
+                const low = val < tgt[0] * 0.99;
+                const fmt = nut.unit === 'kcal/kg' ? function(v) { return Math.round(v); } : function(v) { return v.toFixed(2); };
+                return h('tr', {
+                  key: nut.key,
+                  style: { borderBottom: '1px solid ' + C.border }
+                },
+                  h('td', { style: { padding: '5px 8px', color: C.ink } }, nut.label),
+                  h('td', { style: { padding: '5px 8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: C.muted } },
+                    fmt(tgt[0]) + '\u2013' + fmt(tgt[1]) + ' ' + nut.unit),
+                  h('td', {
+                    style: {
+                      padding: '5px 8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 700,
+                      color: ok ? C.grass : C.danger,
+                      background: ok ? '' : '#ffebeb'
+                    }
+                  }, fmt(val) + ' ' + nut.unit),
+                  h('td', {
+                    style: {
+                      padding: '5px 8px', textAlign: 'center', fontSize: 11, fontWeight: 700,
+                      color: ok ? C.grass : (low ? C.danger : C.warning)
+                    }
+                  }, ok ? '\u2713 OK' : (low ? 'LOW' : 'HIGH'))
+                );
+              });
+            })()
+          )
+        ),
+        h('div', {
+          style: { marginTop: 12, padding: '10px 14px', background: 'white', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+        },
+          h('span', { style: { fontSize: 12, color: C.muted } }, 'Reference cost of this mix'),
+          h('span', { style: { fontSize: 14, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: C.earth } },
+            'KES ' + diagnosticCost.toFixed(2) + ' / kg')
+        ),
+        // Action row — sell sub-spec mix (user's judgment)
+        h('div', {
+          style: {
+            marginTop: 10, padding: '10px 14px', background: C.cream, borderRadius: 8,
+            display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap'
+          }
+        },
+          h(Btn, {
+            onClick: function() { doSaveFormula_SubSpec(); },
+            variant: 'secondary',
+            size: 'sm'
+          }, '\u{1F4BE} Save Sub-Spec Formula'),
+          h(Btn, {
+            onClick: function() { doInitSale_SubSpec(); },
+            variant: 'warn',
+            size: 'sm'
+          }, '\u{1F4B0} Sell Sub-Spec Mix')
+        )
+      )
+    ) : null
   ) : null;
 
   // "What to buy" suggestions card
