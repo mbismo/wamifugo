@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "description": "Wa-Mifugo Feeds Management System",
   "scripts": {
-    "build": "cd client && npm install && npm run build",
-    "start": "cd server && node index.js"
+    "build": "npm run build --prefix client",
+    "start": "npm start --prefix server",
+    "postinstall": "npm install --prefix server && npm install --prefix client"
   },
   "engines": {
     "node": "20.x"
