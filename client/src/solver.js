@@ -128,36 +128,43 @@ function solveStrictLP(ingrs, reqs) {
     return reqs[nut] && Array.isArray(reqs[nut]);
   });
 
-  // Check: given maxIncl bounds, can EACH nutrient theoretically be met?
-  // If not, fail fast.
+  // Fast feasibility pre-check — if impossible, we still want best-effort formula
+  let impossiblePrecheck = false;
   for (const nut of activeNuts) {
     const reqMin = reqs[nut][0];
     const reqMax = reqs[nut][1];
     if (reqMin > 0) {
-      // Max achievable: put max of each ingredient in, bounded by caps, scaled to 100
-      // Simple: max of (nut value) * 1 if within maxIncl
       const upperAch = upperBoundNutrient(ingrs, nut);
-      if (upperAch < reqMin * 0.99) return null; // impossible
+      if (upperAch < reqMin * 0.99) { impossiblePrecheck = true; break; }
     }
     if (reqMax < 9999) {
       const lowerAch = lowerBoundNutrient(ingrs, nut);
-      if (lowerAch > reqMax * 1.01) return null; // impossible
+      if (lowerAch > reqMax * 1.01) { impossiblePrecheck = true; break; }
     }
   }
 
-  // Try LP approach first
-  const lpResult = tryLPSolve(ingrs, reqs);
-  if (lpResult && verifyFeasible(lpResult.formula, ingrs, reqs)) {
-    return lpResult;
+  // Try LP first (fast path when it works)
+  if (!impossiblePrecheck) {
+    const lpResult = tryLPSolve(ingrs, reqs);
+    if (lpResult && verifyFeasible(lpResult.formula, ingrs, reqs)) {
+      return { formula: lpResult.formula, cost: lpResult.cost };
+    }
   }
 
-  // LP failed — use random restart with coordinate descent
+  // ALWAYS run coordinate descent to populate best-effort formula,
+  // even when pre-check says impossible. This ensures the UI always
+  // has a diagnosticFormula to show the user.
   const cdResult = coordinateDescentSearch(ingrs, reqs);
-  if (cdResult && verifyFeasible(cdResult.formula, ingrs, reqs)) {
-    return cdResult;
+  if (cdResult && cdResult.formula && verifyFeasible(cdResult.formula, ingrs, reqs)) {
+    return { formula: cdResult.formula, cost: cdResult.cost };
   }
 
-  return null;
+  // Infeasible — return best-effort diagnostic from coordinate descent
+  return {
+    formula: null,
+    bestEffortFormula: cdResult ? cdResult.bestEffortFormula : null,
+    bestEffortCost: cdResult ? cdResult.bestEffortCost : 0
+  };
 }
 
 // Max nutrient achievable using at most maxIncl of each ingredient, sum = 100
@@ -281,6 +288,10 @@ function coordinateDescentSearch(ingrs, reqs) {
 
   let bestFeasible = null;
   let bestCost = Infinity;
+  // Best-effort: minimum violation (used when no feasible found)
+  let bestEffortX = null;
+  let bestEffortViolation = Infinity;
+  let bestEffortCost = Infinity;
 
   const MAX_ITERS = 600;
 
@@ -293,6 +304,14 @@ function coordinateDescentSearch(ingrs, reqs) {
     // Local search: pairwise swap adjustment
     for (let iter = 0; iter < MAX_ITERS; iter++) {
       const penalty = computePenalty(x, ingrs, reqs, activeNuts);
+
+      // Track best-effort (lowest-violation) solution, and among equally-low, the cheapest
+      if (penalty.violation < bestEffortViolation - 1e-9
+        || (Math.abs(penalty.violation - bestEffortViolation) < 1e-9 && penalty.cost < bestEffortCost)) {
+        bestEffortViolation = penalty.violation;
+        bestEffortCost = penalty.cost;
+        bestEffortX = x.slice();
+      }
 
       // If feasible, record and try to improve cost
       if (penalty.violation < 1e-6) {
@@ -310,7 +329,6 @@ function coordinateDescentSearch(ingrs, reqs) {
 
       // Try a swap: move mass from i to j
       let improved = false;
-      // Try all (i,j) pairs with multiple step sizes
       const steps = penalty.violation > 0.01 ? [10, 5, 2, 0.5, 0.1, 0.02] : [2, 0.5, 0.1, 0.02];
       for (const delta of steps) {
         for (let i = 0; i < n; i++) {
@@ -323,7 +341,6 @@ function coordinateDescentSearch(ingrs, reqs) {
             if (d < 0.01) continue;
             x[i] -= d; x[j] += d;
             const newPen = computePenalty(x, ingrs, reqs, activeNuts);
-            // Accept if feasibility improves, OR feasible and cost improves
             const pv = penalty.violation;
             const better = (pv > 1e-6 && newPen.violation < pv - 1e-8)
                         || (pv <= 1e-6 && newPen.violation <= 1e-6 && newPen.cost < penalty.cost - 1e-5);
@@ -341,8 +358,20 @@ function coordinateDescentSearch(ingrs, reqs) {
     }
   }
 
-  if (!bestFeasible) return null;
-  return { formula: bestFeasible, cost: bestCost };
+  // Build best-effort formula from tracked x
+  let bestEffortFormula = null;
+  if (bestEffortX) {
+    bestEffortFormula = {};
+    for (let i = 0; i < n; i++) if (bestEffortX[i] > 0.05) bestEffortFormula[ingrs[i].id] = bestEffortX[i];
+    normalizeTo100(bestEffortFormula);
+  }
+
+  return {
+    formula: bestFeasible,
+    cost: bestCost,
+    bestEffortFormula: bestEffortFormula,
+    bestEffortCost: bestEffortCost
+  };
 }
 
 // Generate a diverse set of deterministic starting points
@@ -620,11 +649,14 @@ function solveBestEffort(ingrs, reqs) {
   const gaps = computeTrueGaps(ingrs, reqs);
   const warnings = buildGapWarningsFromTrue(gaps, reqs);
 
+  // Best-effort formula (closest-possible mix) from coordinate descent
+  const diagnosticFormula = strict ? (strict.bestEffortFormula || null) : null;
+
   return {
     formula: null,
     infeasible: true,
     reason: 'Cannot meet nutritional targets with the selected ingredients',
-    diagnosticFormula: null,
+    diagnosticFormula: diagnosticFormula,
     gaps: gaps,
     warnings: warnings,
     quality: 'infeasible'
