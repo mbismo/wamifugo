@@ -1535,6 +1535,8 @@ function FormulatorPage(props) {
   const [anfWarnings, setAnfWarnings] = useState([]);
   const [anfExclusions, setAnfExclusions] = useState([]);
   const [buySuggestions, setBuySuggestions] = useState([]);
+  const [infeasibleReason, setInfeasibleReason] = useState('');
+  const [diagnosticFormula, setDiagnosticFormula] = useState(null);
 
   function showT(msg, type) {
     setToast({ msg: msg, type: type || 'success' });
@@ -1618,6 +1620,7 @@ function FormulatorPage(props) {
     if (preload && preloadHandled && formula === preload.formula) return; // skip first render after preload
     setFormula(null); setNutrients(null); setCostPKg(0);
     setAnfWarnings([]); setAnfExclusions([]); setBuySuggestions([]);
+    setInfeasibleReason(''); setDiagnosticFormula(null);
     setLoading(true);
     const timer = setTimeout(function() {
       const ingrs = getActiveWithANF();
@@ -1629,20 +1632,32 @@ function FormulatorPage(props) {
         return;
       }
       const result = solveBestEffort(ingrs, req);
+      // FEASIBLE: nutrition fully met
       if (result && result.formula) {
         const n = calcNutrients(result.formula, ingrs);
         const c = calcCost(result.formula, ingrs);
         setFormula(result.formula);
         setNutrients(n);
         setCostPKg(c);
-        setSolveQuality(result.quality || 'optimal');
+        setSolveQuality('optimal');
         const anfResult = checkANFWarnings(result.formula, ingrs, species);
-        const solverWarnings = (result.warnings || []).map(function(w) {
-          return { ingredient: w.nutrient, factor: 'Nutrient Gap', note: w.note, severity: w.severity };
-        });
-        setAnfWarnings(anfResult.warnings.concat(solverWarnings));
+        setAnfWarnings(anfResult.warnings);
         setAnfExclusions(anfResult.exclusions);
-        // Generate buy suggestions if there are gaps
+        setBuySuggestions([]);
+        setInfeasibleReason('');
+        setDiagnosticFormula(null);
+      }
+      // INFEASIBLE: nutrition cannot be met with current stock
+      else if (result && result.infeasible) {
+        setFormula(null);                              // No formula sold
+        setNutrients(null);
+        setCostPKg(0);
+        setSolveQuality('infeasible');
+        setAnfWarnings(result.warnings || []);
+        setAnfExclusions([]);
+        setInfeasibleReason(result.reason || 'Cannot meet nutritional targets');
+        setDiagnosticFormula(result.diagnosticFormula || null);
+        // Compute buy suggestions from the gaps
         if (result.gaps && Object.keys(result.gaps).length > 0) {
           const sugg = suggestIngredientsToBuy(result.gaps, ingredients, selIngrs);
           setBuySuggestions(sugg);
@@ -1670,13 +1685,22 @@ function FormulatorPage(props) {
         setFormula(result.formula);
         setNutrients(n);
         setCostPKg(c);
-        setSolveQuality(result.quality || 'optimal');
+        setSolveQuality('optimal');
         const anfResult = checkANFWarnings(result.formula, ingrs, species);
-        const solverWarnings = (result.warnings || []).map(function(w) {
-          return { ingredient: w.nutrient, factor: 'Nutrient Gap', note: w.note, severity: w.severity };
-        });
-        setAnfWarnings(anfResult.warnings.concat(solverWarnings));
+        setAnfWarnings(anfResult.warnings);
         setAnfExclusions(anfResult.exclusions);
+        setBuySuggestions([]);
+        setInfeasibleReason('');
+        setDiagnosticFormula(null);
+      } else if (result && result.infeasible) {
+        setFormula(null);
+        setNutrients(null);
+        setCostPKg(0);
+        setSolveQuality('infeasible');
+        setAnfWarnings(result.warnings || []);
+        setAnfExclusions([]);
+        setInfeasibleReason(result.reason || 'Cannot meet nutritional targets');
+        setDiagnosticFormula(result.diagnosticFormula || null);
         if (result.gaps && Object.keys(result.gaps).length > 0) {
           const sugg = suggestIngredientsToBuy(result.gaps, ingredients, selIngrs);
           setBuySuggestions(sugg);
@@ -1997,18 +2021,14 @@ function FormulatorPage(props) {
   // Quality badge
   const qualityLabels = {
     optimal: '\u{2713} Optimal - all nutrients met',
-    good: '\u{2713} Good - minor gaps',
-    partial: '\u{26A0} Partial - some nutrients short',
-    fallback: '\u{26A0} Fallback mix'
+    infeasible: '\u{2717} Cannot meet nutrition with current stock'
   };
   const qualityColors = {
     optimal: { bg: '#f0f9f4', color: C.grass, border: C.leaf },
-    good: { bg: '#f0f9f4', color: C.grass, border: C.leaf },
-    partial: { bg: '#fff8e6', color: C.savanna, border: C.harvest },
-    fallback: { bg: '#fde8e8', color: C.danger, border: C.danger }
+    infeasible: { bg: '#fde8e8', color: C.danger, border: C.danger }
   };
 
-  const qBadge = (formula && solveQuality) ? h('span', {
+  const qBadge = (solveQuality && qualityColors[solveQuality]) ? h('span', {
     style: Object.assign({
       fontSize: 12,
       padding: '6px 14px',
@@ -2061,6 +2081,76 @@ function FormulatorPage(props) {
           )
         );
       })
+    )
+  ) : null;
+
+  // INFEASIBILITY CARD — shown when nutrition cannot be met
+  const infeasibleCard = infeasibleReason ? h(Card, {
+    style: { marginBottom: 14, border: '3px solid ' + C.danger, background: '#fde8e8' }
+  },
+    h('div', {
+      style: {
+        background: 'linear-gradient(135deg,' + C.danger + ',#8b1f1f)',
+        padding: '16px 20px',
+        color: 'white'
+      }
+    },
+      h('div', {
+        style: { fontFamily: "'Playfair Display',serif", fontSize: 19, fontWeight: 700, marginBottom: 4 }
+      }, '\u{26A0} Cannot Meet Nutritional Requirements'),
+      h('div', { style: { fontSize: 13, opacity: 0.95 } }, infeasibleReason)
+    ),
+    h('div', { style: { padding: '16px 20px' } },
+      h('div', {
+        style: { fontSize: 13, color: C.ink, marginBottom: 12, lineHeight: 1.6 }
+      },
+        h('strong', null, 'No formula will be shown or sold. '),
+        'Selling an under-specified feed would harm the animals. Review the gaps below, add missing ingredients to stock, then try again.'),
+      // Gap details
+      Object.keys(anfWarnings).length > 0 || anfWarnings.length > 0 ? h('div', {
+        style: { background: 'white', borderRadius: 8, padding: '12px 14px', marginBottom: 10, border: '1px solid ' + C.border }
+      },
+        h('div', {
+          style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5, color: C.danger, marginBottom: 8, fontFamily: "'DM Mono',monospace" }
+        }, 'Gaps'),
+        anfWarnings.map(function(w, i) {
+          return h('div', {
+            key: i,
+            style: {
+              fontSize: 12, color: C.ink, padding: '6px 0',
+              borderBottom: i < anfWarnings.length - 1 ? '1px solid ' + C.border : 'none'
+            }
+          },
+            h('strong', { style: { color: C.danger } }, w.nutrient + ': '),
+            w.note
+          );
+        })
+      ) : null,
+      // Option to view the diagnostic mix (NOT sellable)
+      diagnosticFormula ? h('details', { style: { marginTop: 10 } },
+        h('summary', {
+          style: { cursor: 'pointer', fontSize: 12, color: C.muted, fontStyle: 'italic' }
+        }, 'Show closest-possible mix (NOT safe to sell)'),
+        h('div', {
+          style: { background: '#fff8e6', borderRadius: 8, padding: '10px 12px', marginTop: 8, fontSize: 11 }
+        },
+          h('div', {
+            style: { fontWeight: 700, color: C.warning, marginBottom: 6 }
+          }, 'This is what the closest mix would look like. It violates nutrition targets and is shown for reference only.'),
+          Object.entries(diagnosticFormula)
+            .sort(function(a, b) { return b[1] - a[1]; })
+            .map(function(entry, i) {
+              const ing = ingredients.find(function(x) { return x.id === entry[0]; });
+              return h('div', {
+                key: i,
+                style: { display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontFamily: "'DM Mono',monospace" }
+              },
+                h('span', null, ing ? ing.name : entry[0]),
+                h('span', { style: { fontWeight: 700 } }, entry[1].toFixed(1) + '%')
+              );
+            })
+        )
+      ) : null
     )
   ) : null;
 
@@ -2309,6 +2399,7 @@ function FormulatorPage(props) {
     ),
     // Main results area
     anfDisplay,
+    infeasibleCard,
     buySuggestionsCard,
     formulaCard,
     nutrientCard

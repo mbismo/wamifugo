@@ -91,15 +91,349 @@ function lpSolve({c, A_ub, b_ub, A_eq, b_eq, lb, ub, maxIter = 8000}) {
     }
   }
   const xF = Array.from(x).map((xi, i) => xi + lbA[i]);
+
+  // POST-SOLVE VERIFICATION: check that all original constraints are satisfied
+  // This catches cases where Big-M numerical issues mask infeasibility
+  const VERIFY_TOL = 1e-4;
+  if (feasible && A_ub) {
+    for (let i = 0; i < rows_ub; i++) {
+      let lhs = 0;
+      for (let j = 0; j < n; j++) lhs += A_ub[i][j] * xF[j];
+      if (lhs > b_ub[i] + VERIFY_TOL) { feasible = false; break; }
+    }
+  }
+  if (feasible && A_eq) {
+    for (let i = 0; i < rows_eq; i++) {
+      let lhs = 0;
+      for (let j = 0; j < n; j++) lhs += A_eq[i][j] * xF[j];
+      if (Math.abs(lhs - b_eq[i]) > VERIFY_TOL * Math.max(1, Math.abs(b_eq[i]))) { feasible = false; break; }
+    }
+  }
+
   return { feasible, x: xF, cost: c.reduce((s, ci, i) => s + ci * xF[i], 0), iters };
 }
 
 const NUTRIENTS = ['cp', 'me', 'fat', 'fibre', 'ca', 'p', 'lys', 'met'];
 
-// GOAL PROGRAMMING SOLVER
-// Introduces slack variables for each nutrient constraint.
-// Objective: minimize weighted sum of slacks (constraint violations) + cost.
-// This ALWAYS returns a solution (even if nutrition cannot be perfectly met).
+// HARD-CONSTRAINED SOLVER — NEVER returns a formula that violates nutrition.
+// Strategy:
+//   1. Try LP (fast, exact when it works)
+//   2. If LP fails or is numerically unstable, use coordinate descent refinement
+//   3. Verify final solution before returning
+function solveStrictLP(ingrs, reqs) {
+  if (!ingrs || ingrs.length === 0) return null;
+  if (!reqs) return null;
+
+  const activeNuts = NUTRIENTS.filter(function(nut) {
+    return reqs[nut] && Array.isArray(reqs[nut]);
+  });
+
+  // Check: given maxIncl bounds, can EACH nutrient theoretically be met?
+  // If not, fail fast.
+  for (const nut of activeNuts) {
+    const reqMin = reqs[nut][0];
+    const reqMax = reqs[nut][1];
+    if (reqMin > 0) {
+      // Max achievable: put max of each ingredient in, bounded by caps, scaled to 100
+      // Simple: max of (nut value) * 1 if within maxIncl
+      const upperAch = upperBoundNutrient(ingrs, nut);
+      if (upperAch < reqMin * 0.99) return null; // impossible
+    }
+    if (reqMax < 9999) {
+      const lowerAch = lowerBoundNutrient(ingrs, nut);
+      if (lowerAch > reqMax * 1.01) return null; // impossible
+    }
+  }
+
+  // Try LP approach first
+  const lpResult = tryLPSolve(ingrs, reqs);
+  if (lpResult && verifyFeasible(lpResult.formula, ingrs, reqs)) {
+    return lpResult;
+  }
+
+  // LP failed — use random restart with coordinate descent
+  const cdResult = coordinateDescentSearch(ingrs, reqs);
+  if (cdResult && verifyFeasible(cdResult.formula, ingrs, reqs)) {
+    return cdResult;
+  }
+
+  return null;
+}
+
+// Max nutrient achievable using at most maxIncl of each ingredient, sum = 100
+function upperBoundNutrient(ingrs, nut) {
+  // Greedy: sort ingredients by nutrient content descending, fill as much as possible
+  const sorted = ingrs.slice().sort(function(a, b) {
+    return (parseFloat(b[nut]) || 0) - (parseFloat(a[nut]) || 0);
+  });
+  let remaining = 100, total = 0;
+  for (const ing of sorted) {
+    const take = Math.min(remaining, parseFloat(ing.maxIncl) || 100);
+    total += take * (parseFloat(ing[nut]) || 0) / 100;
+    remaining -= take;
+    if (remaining <= 0) break;
+  }
+  return total;
+}
+
+// Min nutrient achievable using at most maxIncl of each ingredient, sum = 100
+function lowerBoundNutrient(ingrs, nut) {
+  const sorted = ingrs.slice().sort(function(a, b) {
+    return (parseFloat(a[nut]) || 0) - (parseFloat(b[nut]) || 0);
+  });
+  let remaining = 100, total = 0;
+  for (const ing of sorted) {
+    const take = Math.min(remaining, parseFloat(ing.maxIncl) || 100);
+    total += take * (parseFloat(ing[nut]) || 0) / 100;
+    remaining -= take;
+    if (remaining <= 0) break;
+  }
+  return total;
+}
+
+function verifyFeasible(formula, ingrs, reqs) {
+  const nuts = calcNutrients(formula, ingrs);
+  const tol = 0.005; // 0.5% rounding tolerance
+  for (const nut of NUTRIENTS) {
+    if (!reqs[nut]) continue;
+    const req = reqs[nut];
+    const val = nuts[nut];
+    if (val < req[0] * (1 - tol)) return false;
+    if (val > req[1] * (1 + tol)) return false;
+  }
+  // Verify maxIncl bounds
+  for (const ing of ingrs) {
+    const p = formula[ing.id] || 0;
+    if (p > (parseFloat(ing.maxIncl) || 100) + 0.5) return false;
+  }
+  // Verify sum
+  const sum = Object.values(formula).reduce(function(s, v) { return s + v; }, 0);
+  if (Math.abs(sum - 100) > 0.5) return false;
+  return true;
+}
+
+function tryLPSolve(ingrs, reqs) {
+  // Attempt with pure LP (minimize cost given hard constraints)
+  const n = ingrs.length;
+  const activeNuts = NUTRIENTS.filter(function(nut) {
+    return reqs[nut] && Array.isArray(reqs[nut]);
+  });
+  const c = ingrs.map(function(i) { return (i.price || 0) / 100; });
+  const A_eq = [new Array(n).fill(1)];
+  const b_eq = [100];
+  const A_ub = [];
+  const b_ub = [];
+  activeNuts.forEach(function(nut) {
+    const reqMin = reqs[nut][0];
+    const reqMax = reqs[nut][1];
+    const scale = Math.max(reqMin, reqMax, 1);
+    const nutVals = ingrs.map(function(i) { return (parseFloat(i[nut]) || 0) / 100 / scale; });
+    if (reqMin > 0) {
+      A_ub.push(nutVals.map(function(v) { return -v; }));
+      b_ub.push(-reqMin / scale);
+    }
+    if (reqMax < 9999) {
+      A_ub.push(nutVals.slice());
+      b_ub.push(reqMax / scale);
+    }
+  });
+  const lb = new Array(n).fill(0);
+  const ub = ingrs.map(function(i) { return Math.min(parseFloat(i.maxIncl) || 100, 100); });
+
+  try {
+    const res = lpSolve({ c: c, A_ub: A_ub, b_ub: b_ub, A_eq: A_eq, b_eq: b_eq, lb: lb, ub: ub });
+    if (!res || !res.x || !res.feasible) return null;
+    const formula = {};
+    for (let i = 0; i < n; i++) {
+      if (res.x[i] > 0.05) formula[ingrs[i].id] = res.x[i];
+    }
+    normalizeTo100(formula);
+    return { formula: formula, cost: calcCost(formula, ingrs) };
+  } catch (e) {
+    return null;
+  }
+}
+
+function normalizeTo100(formula) {
+  const tot = Object.values(formula).reduce(function(s, v) { return s + v; }, 0);
+  if (tot < 0.001) return;
+  if (Math.abs(tot - 100) > 0.001) {
+    const sc = 100 / tot;
+    Object.keys(formula).forEach(function(k) { formula[k] *= sc; });
+  }
+  const raw = Object.entries(formula);
+  const diff = 100 - raw.reduce(function(s, e) { return s + e[1]; }, 0);
+  if (raw.length && Math.abs(diff) > 0.001) {
+    const lg = raw.reduce(function(a, b) { return b[1] > a[1] ? b : a; })[0];
+    formula[lg] += diff;
+  }
+}
+
+// Coordinate-descent search: iteratively improve from a feasible-ish starting point
+// Uses deterministic restarts with multiple starting strategies for reliability.
+function coordinateDescentSearch(ingrs, reqs) {
+  const n = ingrs.length;
+  if (n < 2) return null;
+
+  const activeNuts = NUTRIENTS.filter(function(nut) {
+    return reqs[nut] && Array.isArray(reqs[nut]);
+  });
+
+  let bestFeasible = null;
+  let bestCost = Infinity;
+
+  const MAX_ITERS = 600;
+
+  // Generate diverse starting points
+  const startingPoints = generateStartingPoints(ingrs, reqs, activeNuts);
+
+  for (const startX of startingPoints) {
+    const x = startX.slice();
+
+    // Local search: pairwise swap adjustment
+    for (let iter = 0; iter < MAX_ITERS; iter++) {
+      const penalty = computePenalty(x, ingrs, reqs, activeNuts);
+
+      // If feasible, record and try to improve cost
+      if (penalty.violation < 1e-6) {
+        const formula = {};
+        for (let i = 0; i < n; i++) if (x[i] > 0.05) formula[ingrs[i].id] = x[i];
+        normalizeTo100(formula);
+        if (verifyFeasible(formula, ingrs, reqs)) {
+          const c = calcCost(formula, ingrs);
+          if (c < bestCost) {
+            bestFeasible = formula;
+            bestCost = c;
+          }
+        }
+      }
+
+      // Try a swap: move mass from i to j
+      let improved = false;
+      // Try all (i,j) pairs with multiple step sizes
+      const steps = penalty.violation > 0.01 ? [10, 5, 2, 0.5, 0.1, 0.02] : [2, 0.5, 0.1, 0.02];
+      for (const delta of steps) {
+        for (let i = 0; i < n; i++) {
+          if (x[i] < 0.01) continue;
+          for (let j = 0; j < n; j++) {
+            if (i === j) continue;
+            const jCap = parseFloat(ingrs[j].maxIncl) || 100;
+            const jBound = Math.min(jCap, 100);
+            const d = Math.min(delta, x[i], jBound - x[j]);
+            if (d < 0.01) continue;
+            x[i] -= d; x[j] += d;
+            const newPen = computePenalty(x, ingrs, reqs, activeNuts);
+            // Accept if feasibility improves, OR feasible and cost improves
+            const pv = penalty.violation;
+            const better = (pv > 1e-6 && newPen.violation < pv - 1e-8)
+                        || (pv <= 1e-6 && newPen.violation <= 1e-6 && newPen.cost < penalty.cost - 1e-5);
+            if (better) {
+              improved = true;
+              break;
+            }
+            x[i] += d; x[j] -= d; // revert
+          }
+          if (improved) break;
+        }
+        if (improved) break;
+      }
+      if (!improved) break;
+    }
+  }
+
+  if (!bestFeasible) return null;
+  return { formula: bestFeasible, cost: bestCost };
+}
+
+// Generate a diverse set of deterministic starting points
+function generateStartingPoints(ingrs, reqs, activeNuts) {
+  const n = ingrs.length;
+  const points = [];
+
+  // 1. Uniform allocation
+  const uniform = new Array(n).fill(0);
+  let rem = 100;
+  for (let i = 0; i < n; i++) {
+    const cap = Math.min(parseFloat(ingrs[i].maxIncl) || 100, 100);
+    const share = Math.min(cap, 100 / n);
+    uniform[i] = share;
+    rem -= share;
+  }
+  // Distribute remainder
+  if (rem > 0.01) distributeRemainder(uniform, rem, ingrs);
+  points.push(uniform);
+
+  // 2. Skewed toward high-priority nutrients (one start per shortfall-prone nutrient)
+  // For each nutrient, start by maxing out the ingredients highest in that nutrient
+  for (const nut of activeNuts) {
+    const priority = ingrs
+      .map(function(ing, idx) { return { idx: idx, val: parseFloat(ing[nut]) || 0 }; })
+      .sort(function(a, b) { return b.val - a.val; });
+    const x = new Array(n).fill(0);
+    let remaining = 100;
+    for (const p of priority) {
+      const cap = Math.min(parseFloat(ingrs[p.idx].maxIncl) || 100, 100, remaining);
+      // Use up to 60% of what's available in this ingredient, leaving room for others
+      const take = cap * 0.7;
+      x[p.idx] = take;
+      remaining -= take;
+      if (remaining < 0.1) break;
+    }
+    if (remaining > 0.01) distributeRemainder(x, remaining, ingrs);
+    points.push(x);
+  }
+
+  // 3. Cheapest-first (approximate LP solution)
+  const byCost = ingrs
+    .map(function(ing, idx) { return { idx: idx, price: parseFloat(ing.price) || 0 }; })
+    .sort(function(a, b) { return a.price - b.price; });
+  const x3 = new Array(n).fill(0);
+  let rem3 = 100;
+  for (const p of byCost) {
+    const cap = Math.min(parseFloat(ingrs[p.idx].maxIncl) || 100, 100, rem3);
+    x3[p.idx] = cap * 0.8;
+    rem3 -= x3[p.idx];
+  }
+  if (rem3 > 0.01) distributeRemainder(x3, rem3, ingrs);
+  points.push(x3);
+
+  return points;
+}
+
+function distributeRemainder(x, rem, ingrs) {
+  for (let i = 0; i < ingrs.length && rem > 0.01; i++) {
+    const cap = Math.min(parseFloat(ingrs[i].maxIncl) || 100, 100);
+    const canAdd = cap - x[i];
+    const add = Math.min(canAdd, rem);
+    x[i] += add;
+    rem -= add;
+  }
+}
+
+function computePenalty(x, ingrs, reqs, activeNuts) {
+  let cost = 0, violation = 0, sum = 0;
+  for (let i = 0; i < ingrs.length; i++) {
+    cost += x[i] * (parseFloat(ingrs[i].price) || 0) / 100;
+    sum += x[i];
+  }
+  // Sum = 100
+  violation += Math.abs(sum - 100);
+  // Nutrient bounds
+  for (const nut of activeNuts) {
+    const req = reqs[nut];
+    let val = 0;
+    for (let i = 0; i < ingrs.length; i++) {
+      val += x[i] * (parseFloat(ingrs[i][nut]) || 0) / 100;
+    }
+    if (val < req[0]) violation += (req[0] - val) / Math.max(req[0], 0.01);
+    if (val > req[1]) violation += (val - req[1]) / Math.max(req[1], 0.01);
+  }
+  return { cost: cost, violation: violation };
+}
+
+// GOAL PROGRAMMING SOLVER (only used for DIAGNOSTIC purposes)
+// Returns the closest-possible formula with its gaps, so we can report to the user
+// what is missing. NEVER used as the production formula when strict LP fails.
 function solveGoalProgram(ingrs, reqs) {
   if (!ingrs || ingrs.length === 0) return null;
   if (!reqs) return null;
@@ -197,43 +531,136 @@ function solveGoalProgram(ingrs, reqs) {
 
     return { formula: formula, gaps: gaps };
   } catch (e) {
-    console.warn('Solver error:', e);
+    console.warn('Goal program error:', e);
     return null;
   }
 }
 
-function solveBestEffort(ingrs, reqs) {
-  if (!ingrs || ingrs.length === 0) return null;
-  if (!reqs) return null;
+// Compute gaps by trying to solve for ONE nutrient at a time
+// For each nutrient, find the max achievable (for mins) or min achievable (for maxes)
+// and compare to target. This gives truly-achievable gaps, not slack-LP gaps.
+function computeTrueGaps(ingrs, reqs) {
+  const n = ingrs.length;
+  const activeNuts = NUTRIENTS.filter(function(nut) {
+    return reqs[nut] && Array.isArray(reqs[nut]);
+  });
+  const gaps = {};
+  const diagnosticFormula = {};
 
-  const result = solveGoalProgram(ingrs, reqs);
-  if (!result) {
-    const formula = {};
-    const top = ingrs.slice(0, Math.min(4, ingrs.length));
-    const pct = 100 / top.length;
-    top.forEach(function(i) { formula[i.id] = pct; });
+  // First, find the formula that maximizes weighted nutrient achievement
+  // The easiest: use an unconstrained LP to find the nutrient-richest feasible mix
+  // But we need something reasonable - let's just compute "how close can we get to each target?"
+
+  // Simpler: for each shortfall nutrient, maximize its content
+  //         for each excess nutrient, minimize its content
+  activeNuts.forEach(function(nut) {
+    const nutVals = ingrs.map(function(i) { return (parseFloat(i[nut]) || 0) / 100; });
+    const reqMin = reqs[nut][0];
+    const reqMax = reqs[nut][1];
+
+    // Maximize nutrient content (for checking shortfalls)
+    const cMax = nutVals.map(function(v) { return -v; }); // negate to maximize
+    const A_eq = [new Array(n).fill(1)];
+    const b_eq = [100];
+    const lb = new Array(n).fill(0);
+    const ub = ingrs.map(function(i) { return Math.min(parseFloat(i.maxIncl) || 100, 100); });
+    const maxRes = lpSolve({ c: cMax, A_eq: A_eq, b_eq: b_eq, lb: lb, ub: ub });
+    const maxAchievable = maxRes && maxRes.x ? -maxRes.cost : 0;
+
+    // Minimize nutrient content (for checking excesses)
+    const cMin = nutVals.slice();
+    const minRes = lpSolve({ c: cMin, A_eq: A_eq, b_eq: b_eq, lb: lb, ub: ub });
+    const minAchievable = minRes && minRes.x ? minRes.cost : 0;
+
+    const gap = {};
+    if (reqMin > 0 && maxAchievable < reqMin) {
+      gap.shortfall = reqMin - maxAchievable;
+      gap.maxAchievable = maxAchievable;
+      gap.target = reqMin;
+    }
+    if (reqMax < 9999 && minAchievable > reqMax) {
+      gap.excess = minAchievable - reqMax;
+      gap.minAchievable = minAchievable;
+      gap.target = reqMax;
+    }
+    if (Object.keys(gap).length > 0) {
+      gaps[nut] = gap;
+    }
+  });
+
+  return gaps;
+}
+
+// MAIN ENTRY POINT — STRICT ON NUTRITION
+// Returns { formula, quality, warnings, gaps, infeasible } 
+// - formula: non-null ONLY if all nutrition met
+// - infeasible: true when nutrition cannot be met
+// - gaps: per-nutrient shortfall/excess info for the UI
+function solveBestEffort(ingrs, reqs) {
+  if (!ingrs || ingrs.length === 0) {
+    return { formula: null, infeasible: true, reason: 'No ingredients provided', gaps: {}, warnings: [] };
+  }
+  if (!reqs) {
+    return { formula: null, infeasible: true, reason: 'No nutritional requirements for this species+stage', gaps: {}, warnings: [] };
+  }
+
+  // Priority 1: strict LP — nutrition is mandatory
+  const strict = solveStrictLP(ingrs, reqs);
+  if (strict && strict.formula) {
     return {
-      formula: formula,
-      quality: 'fallback',
-      warnings: [{ nutrient: 'ALL', severity: 'danger', note: 'Could not optimise. Showing equal mix.' }],
-      gaps: {}
+      formula: strict.formula,
+      quality: 'optimal',
+      warnings: [],
+      gaps: {},
+      infeasible: false
     };
   }
 
-  const gapCount = Object.keys(result.gaps).length;
-  let quality;
-  if (gapCount === 0) quality = 'optimal';
-  else if (gapCount <= 2) quality = 'good';
-  else quality = 'partial';
-
-  const warnings = buildGapWarnings(result.gaps, reqs, result.formula, ingrs);
+  // Infeasible: compute true gaps per nutrient
+  const gaps = computeTrueGaps(ingrs, reqs);
+  const warnings = buildGapWarningsFromTrue(gaps, reqs);
 
   return {
-    formula: result.formula,
-    quality: quality,
+    formula: null,
+    infeasible: true,
+    reason: 'Cannot meet nutritional targets with the selected ingredients',
+    diagnosticFormula: null,
+    gaps: gaps,
     warnings: warnings,
-    gaps: result.gaps
+    quality: 'infeasible'
   };
+}
+
+function buildGapWarningsFromTrue(gaps, reqs) {
+  const nutLabels = {
+    cp: 'Crude Protein', me: 'Metabolisable Energy', fat: 'Fat', fibre: 'Fibre',
+    ca: 'Calcium', p: 'Phosphorus', lys: 'Lysine', met: 'Methionine'
+  };
+  const unitMap = { cp: '%', me: ' kcal/kg', fat: '%', fibre: '%', ca: '%', p: '%', lys: '%', met: '%' };
+  const warnings = [];
+  Object.entries(gaps).forEach(function(entry) {
+    const nut = entry[0];
+    const gap = entry[1];
+    const label = nutLabels[nut] || nut;
+    const unit = unitMap[nut] || '';
+    if (gap.shortfall) {
+      warnings.push({
+        nutrient: label, severity: 'danger',
+        note: 'Best achievable ' + label + ' is ' + gap.maxAchievable.toFixed(2) + unit +
+              ', but target requires at least ' + gap.target + unit +
+              ' (short by ' + gap.shortfall.toFixed(2) + unit + ').'
+      });
+    }
+    if (gap.excess) {
+      warnings.push({
+        nutrient: label, severity: 'danger',
+        note: 'Minimum achievable ' + label + ' is ' + gap.minAchievable.toFixed(2) + unit +
+              ', but target requires at most ' + gap.target + unit +
+              ' (exceeds by ' + gap.excess.toFixed(2) + unit + ').'
+      });
+    }
+  });
+  return warnings;
 }
 
 function buildGapWarnings(gaps, reqs, formula, ingrs) {
@@ -386,6 +813,7 @@ function assessNutrientGaps(nutrients, reqs) {
 
 export {
   lpSolve,
+  solveStrictLP,
   solveLeastCostLP,
   solveLeastCost,
   solveBestEffort,
