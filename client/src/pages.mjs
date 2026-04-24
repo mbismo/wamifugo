@@ -573,10 +573,31 @@ function LoginPage(props) {
   function setE(e) { setErr(e); setMsg(''); }
   function setM(m) { setMsg(m); setErr(''); }
 
-  function login() {
+  async function login() {
     setErr('');
-    const stored = db.get('users', null);
-    const users = (stored && stored.length > 0) ? stored : SEED_USERS;
+    setLoading(true);
+    let users = null;
+    // Try server first so newly-created users sync across devices
+    try {
+      const key = (import.meta.env && import.meta.env.VITE_SYNC_KEY) || 'wamifugo2024';
+      const r = await fetch('/api/data/users', { headers: { 'X-Sync-Key': key } });
+      if (r.ok) {
+        const d = await r.json();
+        if (d && d.data && d.data.length > 0) {
+          users = d.data;
+          // Cache locally so subsequent loads work offline
+          db.set('users', users);
+        }
+      }
+    } catch (e) {
+      // Server unreachable - fall through to local cache
+    }
+    // If no server response, use local cache, then seed
+    if (!users) {
+      const stored = db.get('users', null);
+      users = (stored && stored.length > 0) ? stored : SEED_USERS;
+    }
+    setLoading(false);
     const user = users.find(function(u) {
       return u.username === uname && u.password === pass && u.active;
     });
@@ -671,7 +692,12 @@ function LoginPage(props) {
   const loginView = h('div', null,
     h(Inp, { label: 'Username', value: uname, onChange: setUname, placeholder: 'Enter username' }),
     h(Inp, { label: 'Password', value: pass, onChange: function(v) { setPass(v); setErr(''); }, type: 'password', placeholder: 'Enter password' }),
-    h(Btn, { onClick: login, size: 'lg', style: { width: '100%', marginTop: 10 } }, 'Sign In'),
+    h(Btn, {
+      onClick: login,
+      size: 'lg',
+      style: { width: '100%', marginTop: 10 },
+      disabled: loading
+    }, loading ? 'Signing in...' : 'Sign In'),
     h('div', { style: { textAlign: 'center', marginTop: 14 } },
       h('span', {
         style: { fontSize: 13, color: C.muted, cursor: 'pointer', textDecoration: 'underline' },
