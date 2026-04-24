@@ -1688,7 +1688,7 @@ function FormulatorPage(props) {
 
   function doSaveFormula() {
     if (!formula || !fName) return;
-    const saved = db.get('savedFormulas', []);
+    const saved = (ctx.savedFormulas && ctx.savedFormulas.length) ? ctx.savedFormulas : db.get('savedFormulas', []);
     const rec = {
       id: uid(), name: fName, species: species, stage: stage,
       formula: formula, nutrients: nutrients, costPerKg: costPKg,
@@ -1696,8 +1696,13 @@ function FormulatorPage(props) {
       customerName: (customers.find(function(c) { return c.id === custId; }) || {}).name || '-',
       savedOn: today(), batchKg: batchKg
     };
-    db.set('savedFormulas', saved.concat([rec]));
-    serverPush('savedFormulas', db.get('savedFormulas', []));
+    const next = saved.concat([rec]);
+    if (ctx.setSavedFormulas) {
+      ctx.setSavedFormulas(next);
+    } else {
+      db.set('savedFormulas', next);
+      serverPush('savedFormulas', next);
+    }
     setShowSave(false); setFName('');
     showT('Formula saved');
   }
@@ -3648,7 +3653,8 @@ function SavedFormulasPage(props) {
   const ctx = useContext(Ctx);
   const customers = ctx.customers || [];
   const user = ctx.user;
-  const [saved, setSaved] = useState(function() { return db.get('savedFormulas', []); });
+  // Prefer context state (live, synced); fall back to localStorage
+  const saved = (ctx.savedFormulas && ctx.savedFormulas.length >= 0) ? ctx.savedFormulas : db.get('savedFormulas', []);
   const [selCust, setSelCust] = useState('');
   const [toast, setToast] = useState(null);
 
@@ -3656,10 +3662,6 @@ function SavedFormulasPage(props) {
     setToast({ msg: msg, type: type || 'success' });
     setTimeout(function() { setToast(null); }, 3500);
   }
-
-  useEffect(function() {
-    setSaved(db.get('savedFormulas', []) || []);
-  }, []);
 
   const filtered = selCust
     ? saved.filter(function(s) { return s.customerId === selCust; })
@@ -3694,9 +3696,12 @@ function SavedFormulasPage(props) {
   function deleteFormula(f) {
     if (!window.confirm('Delete saved formula "' + f.name + '"?')) return;
     const next = saved.filter(function(s) { return s.id !== f.id; });
-    db.set('savedFormulas', next);
-    serverPush('savedFormulas', next);
-    setSaved(next);
+    if (ctx.setSavedFormulas) {
+      ctx.setSavedFormulas(next);
+    } else {
+      db.set('savedFormulas', next);
+      serverPush('savedFormulas', next);
+    }
     showT('Formula deleted');
   }
 
