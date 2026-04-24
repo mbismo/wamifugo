@@ -16,13 +16,17 @@ const h = React.createElement;
 async function serverPush(col, data) {
   const key = import.meta.env?.VITE_SYNC_KEY || 'wamifugo2024';
   try {
-    await fetch('/api/data/' + col, {
+    const res = await fetch('/api/data/' + col, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Sync-Key': key },
-      body: JSON.stringify(data)
+      body: JSON.stringify({ data: data, ts: Date.now() })
     });
+    if (!res.ok) {
+      const txt = await res.text().catch(function() { return ''; });
+      console.warn('Server push failed:', col, res.status, txt);
+    }
   } catch (e) {
-    console.warn('Server push failed:', e.message);
+    console.warn('Server push failed:', col, e.message);
   }
 }
 
