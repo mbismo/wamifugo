@@ -94,10 +94,16 @@ export default function App() {
     }).catch(() => {}).finally(() => setAppReady(true));
   }, []);
 
-  // Poll every 15s while logged in
+  // Poll every 60s while logged in, but NOT while user is actively typing
   useEffect(() => {
     if (!user) return;
+    let lastInputTime = Date.now();
+    const trackInput = () => { lastInputTime = Date.now(); };
+    window.addEventListener('keydown', trackInput, { passive: true });
+    window.addEventListener('input', trackInput, { passive: true, capture: true });
     const id = setInterval(() => {
+      // Skip poll if user typed in the last 3 seconds
+      if (Date.now() - lastInputTime < 3000) return;
       serverPullAll().then(data => {
         if (data.inventory?.data)   setInvState(data.inventory.data);
         if (data.purchases?.data)   setPurchState(data.purchases.data);
@@ -106,8 +112,12 @@ export default function App() {
         if (data.ingredients?.data) setIngrState(data.ingredients.data);
         if (data.animalReqs?.data)  db.set("animalReqs", data.animalReqs.data);
       });
-    }, 15000);
-    return () => clearInterval(id);
+    }, 60000);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('keydown', trackInput);
+      window.removeEventListener('input', trackInput, true);
+    };
   }, [user]);
 
   // Inactivity logout: 30 minutes

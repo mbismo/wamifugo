@@ -2,7 +2,7 @@ import { useState, useEffect, useContext } from "react";
 import React from "react";
 import { Ctx } from "./App.jsx";
 import { db } from "./db.js";
-import { C, uid, today, dateRange, fmt, fmtKES } from "./utils.js";
+import { C, uid, today, dateRange, fmt, fmtKES, exportToExcel, readExcelFile } from "./utils.js";
 import {
   SEED_USERS, SEED_ANIMAL_REQS, SEED_INGREDIENT_PROFILES,
   CATEGORY_META, CATEGORY_ICONS, FEEDING_QTY, TIPS, SPECIES_RECS,
@@ -30,6 +30,7 @@ async function serverPush(col, data) {
 const NAV = [
   { key: 'dashboard', icon: '\u{1F4CA}', label: 'Dashboard' },
   { key: 'formulator', icon: '\u{1F9EA}', label: 'Feed Formulator' },
+  { key: 'saved_formulas', icon: '\u{1F4BE}', label: 'Saved Formulas' },
   { key: 'inventory', icon: '\u{1F4E6}', label: 'Inventory' },
   { key: 'customers', icon: '\u{1F465}', label: 'Customers' },
   { key: 'sales', icon: '\u{1F4B0}', label: 'Sales' },
@@ -253,12 +254,26 @@ function Inp(props) {
     width: '100%', padding: '8px 11px', border: '1px solid ' + C.border, borderRadius: 8,
     fontSize: 13, color: C.ink, background: C.cream, outline: 'none'
   }, props.style || {});
+  // Local state buffers keystrokes so parent re-renders do not lose focus
+  const [local, setLocal] = useState(props.value == null ? '' : String(props.value));
+  const [focused, setFocused] = useState(false);
+  // Sync from parent when NOT actively typing
+  useEffect(function() {
+    if (!focused) setLocal(props.value == null ? '' : String(props.value));
+  }, [props.value, focused]);
   const labelEl = props.label ? h('div', { style: labelStyle }, props.label) : null;
   const input = h('input', {
     type: props.type || 'text',
-    value: props.value,
-    onChange: function(e) { props.onChange(e.target.value); },
+    value: local,
+    onFocus: function() { setFocused(true); },
+    onBlur: function() { setFocused(false); if (props.onChange) props.onChange(local); },
+    onChange: function(e) {
+      setLocal(e.target.value);
+      if (props.onChange) props.onChange(e.target.value);
+    },
+    onKeyDown: props.onKeyDown,
     placeholder: props.placeholder || '',
+    maxLength: props.maxLength,
     style: inputStyle
   });
   return h('div', { style: wrapStyle }, labelEl, input);
@@ -269,7 +284,7 @@ function Sel(props) {
   const labelStyle = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: C.muted, marginBottom: 4 };
   const selectStyle = Object.assign({
     width: '100%', padding: '8px 11px', border: '1px solid ' + C.border, borderRadius: 8,
-    fontSize: 13, color: C.ink, background: C.cream, outline: 'none'
+    fontSize: 13, color: C.ink, background: C.cream, outline: 'none', cursor: 'pointer'
   }, props.style || {});
   const labelEl = props.label ? h('div', { style: labelStyle }, props.label) : null;
   const options = (props.options || []).map(function(o) {
@@ -391,13 +406,116 @@ function PageHdr(props) {
 function Tbl(props) {
   const cols = props.cols || [];
   const rows = props.rows || [];
-  const headerStyle = { padding: '9px 13px', background: C.parchment, color: C.soil, textAlign: 'left', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, whiteSpace: 'nowrap' };
-  const cellStyle = { padding: '9px 13px', color: C.ink, verticalAlign: 'middle', fontSize: 12 };
-  const ths = cols.map(function(c) { return h('th', { key: c.key, style: headerStyle }, c.label); });
-  if (rows.length === 0) {
-    return h('div', { style: { padding: 30, textAlign: 'center', color: C.muted, fontSize: 13 } }, props.emptyMsg || 'No data');
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
+  const [page, setPage] = useState(0);
+  const perPage = props.perPage || 25;
+  const showSearch = props.showSearch !== false;
+  const maxHeight = props.maxHeight || 500;
+
+  // Filter by search
+  const filtered = search
+    ? rows.filter(function(r) {
+        const hay = cols.map(function(c) {
+          const v = c.render ? (c.searchValue ? c.searchValue(r) : r[c.key]) : r[c.key];
+          return String(v == null ? '' : v).toLowerCase();
+        }).join(' ');
+        return hay.indexOf(search.toLowerCase()) !== -1;
+      })
+    : rows;
+
+  // Sort
+  const sorted = sortKey
+    ? filtered.slice().sort(function(a, b) {
+        const col = cols.find(function(c) { return c.key === sortKey; });
+        const av = col && col.sortValue ? col.sortValue(a) : a[sortKey];
+        const bv = col && col.sortValue ? col.sortValue(b) : b[sortKey];
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        const an = typeof av === 'number' ? av : parseFloat(av);
+        const bn = typeof bv === 'number' ? bv : parseFloat(bv);
+        let cmp;
+        if (!isNaN(an) && !isNaN(bn)) cmp = an - bn;
+        else cmp = String(av).localeCompare(String(bv));
+        return sortDir === 'asc' ? cmp : -cmp;
+      })
+    : filtered;
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
+  const pageClamp = Math.min(page, totalPages - 1);
+  const paged = sorted.slice(pageClamp * perPage, (pageClamp + 1) * perPage);
+
+  const headerStyle = {
+    padding: '10px 13px',
+    background: C.parchment,
+    color: C.soil,
+    textAlign: 'left',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    fontFamily: "'DM Mono',monospace",
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+    position: 'sticky',
+    top: 0,
+    zIndex: 1,
+    borderBottom: '2px solid ' + C.border,
+    cursor: 'pointer',
+    userSelect: 'none'
+  };
+  const cellStyle = { padding: '10px 13px', color: C.ink, verticalAlign: 'middle', fontSize: 12 };
+
+  function toggleSort(key) {
+    if (sortKey === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
   }
-  const trs = rows.map(function(row, i) {
+
+  const ths = cols.map(function(c) {
+    const isSorted = sortKey === c.key;
+    const arrow = isSorted ? (sortDir === 'asc' ? ' \u2191' : ' \u2193') : '';
+    const sortable = c.sortable !== false && c.key !== 'actions' && c.key !== 'del';
+    return h('th', {
+      key: c.key,
+      style: Object.assign({}, headerStyle, { cursor: sortable ? 'pointer' : 'default' }),
+      onClick: sortable ? function() { toggleSort(c.key); } : null
+    }, c.label + arrow);
+  });
+
+  const searchBar = showSearch && rows.length > 5 ? h('div', {
+    style: { padding: '10px 13px', borderBottom: '1px solid ' + C.border, background: 'white', display: 'flex', gap: 10, alignItems: 'center' }
+  },
+    h('span', { style: { fontSize: 14 } }, '\u{1F50D}'),
+    h('input', {
+      value: search,
+      onChange: function(e) { setSearch(e.target.value); setPage(0); },
+      placeholder: 'Search ' + rows.length + ' records...',
+      style: { flex: 1, padding: '7px 10px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 13, background: C.cream, outline: 'none' }
+    }),
+    search ? h('button', {
+      onClick: function() { setSearch(''); setPage(0); },
+      style: { border: 'none', background: C.border, color: C.muted, padding: '5px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11 }
+    }, 'Clear') : null,
+    h('span', { style: { fontSize: 11, color: C.muted, fontFamily: "'DM Mono',monospace" } },
+      filtered.length + ' / ' + rows.length)
+  ) : null;
+
+  if (rows.length === 0) {
+    return h('div', { style: { padding: 40, textAlign: 'center', color: C.muted, fontSize: 13 } }, props.emptyMsg || 'No data');
+  }
+
+  if (filtered.length === 0) {
+    return h('div', null,
+      searchBar,
+      h('div', { style: { padding: 40, textAlign: 'center', color: C.muted, fontSize: 13 } }, 'No records match your search.')
+    );
+  }
+
+  const trs = paged.map(function(row, i) {
     const tds = cols.map(function(c) {
       const value = c.render ? c.render(row) : row[c.key];
       return h('td', { key: c.key, style: cellStyle }, value);
@@ -405,11 +523,35 @@ function Tbl(props) {
     const rowStyle = { borderBottom: '1px solid ' + C.border, background: i % 2 === 0 ? C.cream : 'white' };
     return h('tr', { key: row.id || i, style: rowStyle }, tds);
   });
-  return h('div', { style: { overflowX: 'auto' } },
-    h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 } },
-      h('thead', null, h('tr', null, ths)),
-      h('tbody', null, trs)
+
+  const pagination = totalPages > 1 ? h('div', {
+    style: { padding: '10px 13px', borderTop: '1px solid ' + C.border, background: C.parchment, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }
+  },
+    h('span', { style: { color: C.muted, fontFamily: "'DM Mono',monospace" } },
+      'Page ' + (pageClamp + 1) + ' of ' + totalPages + ' \u2022 showing ' + paged.length + ' of ' + sorted.length),
+    h('div', { style: { display: 'flex', gap: 6 } },
+      h('button', {
+        onClick: function() { setPage(Math.max(0, pageClamp - 1)); },
+        disabled: pageClamp === 0,
+        style: { padding: '5px 12px', border: '1px solid ' + C.border, background: pageClamp === 0 ? C.border : 'white', borderRadius: 6, cursor: pageClamp === 0 ? 'not-allowed' : 'pointer', fontSize: 12 }
+      }, '\u2190 Prev'),
+      h('button', {
+        onClick: function() { setPage(Math.min(totalPages - 1, pageClamp + 1)); },
+        disabled: pageClamp === totalPages - 1,
+        style: { padding: '5px 12px', border: '1px solid ' + C.border, background: pageClamp === totalPages - 1 ? C.border : 'white', borderRadius: 6, cursor: pageClamp === totalPages - 1 ? 'not-allowed' : 'pointer', fontSize: 12 }
+      }, 'Next \u2192')
     )
+  ) : null;
+
+  return h('div', null,
+    searchBar,
+    h('div', { style: { overflowX: 'auto', overflowY: 'auto', maxHeight: maxHeight } },
+      h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 } },
+        h('thead', null, h('tr', null, ths)),
+        h('tbody', null, trs)
+      )
+    ),
+    pagination
   );
 }
 
@@ -1001,14 +1143,99 @@ function IngredientsPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importStatus, setImportStatus] = useState(null);
   const blank = { name: '', category: 'energy', cp: '', me: '', fat: '', fibre: '', ca: '', p: '', lys: '', met: '', antiNote: '' };
   const [form, setForm] = useState(blank);
+
+  function showT(msg, type) {
+    setToast({ msg: msg, type: type || 'success' });
+    setTimeout(function() { setToast(null); }, 3500);
+  }
 
   function openAdd() { setForm(blank); setEditing(null); setShowForm(true); }
   function openEdit(ing) {
     setForm(Object.assign({}, blank, ing));
     setEditing(ing);
     setShowForm(true);
+  }
+
+  async function handleExcelImport(file) {
+    if (!file) return;
+    setImportStatus({ type: 'loading', msg: 'Reading Excel file...' });
+    try {
+      const result = await readExcelFile(file);
+      const rows = result.rows || [];
+      if (rows.length === 0) {
+        setImportStatus({ type: 'error', msg: 'The file has no data rows.' });
+        return;
+      }
+      // Normalize column names (lowercase, strip spaces)
+      const norm = function(k) { return String(k).toLowerCase().replace(/[^a-z0-9]/g, ''); };
+      const newIngredients = [];
+      const errors = [];
+      rows.forEach(function(row, i) {
+        const keys = Object.keys(row);
+        const get = function(possibleNames) {
+          for (const name of possibleNames) {
+            const k = keys.find(function(x) { return norm(x) === norm(name); });
+            if (k) return row[k];
+          }
+          return null;
+        };
+        const name = get(['name', 'ingredient', 'ingredientname']);
+        if (!name) { errors.push('Row ' + (i + 2) + ': missing name'); return; }
+        newIngredients.push({
+          id: 'ing_' + uid(),
+          name: String(name).trim(),
+          category: String(get(['category', 'type']) || 'energy').toLowerCase().trim(),
+          cp: parseFloat(get(['cp', 'crudeprotein', 'protein', 'cppercent'])) || 0,
+          me: parseFloat(get(['me', 'metabolisableenergy', 'energy', 'mekcalkg'])) || 0,
+          fat: parseFloat(get(['fat', 'crudefat', 'fatpercent'])) || 0,
+          fibre: parseFloat(get(['fibre', 'fiber', 'crudefibre', 'cf'])) || 0,
+          ca: parseFloat(get(['ca', 'calcium', 'capercent'])) || 0,
+          p: parseFloat(get(['p', 'phosphorus', 'ppercent'])) || 0,
+          lys: parseFloat(get(['lys', 'lysine'])) || 0,
+          met: parseFloat(get(['met', 'methionine'])) || 0
+        });
+      });
+      if (newIngredients.length === 0) {
+        setImportStatus({ type: 'error', msg: 'No valid rows found. Errors: ' + errors.slice(0, 3).join('; ') });
+        return;
+      }
+      // Merge by name - update existing ingredients with same name, add new
+      const existingNames = new Set(ingredients.map(function(i) { return i.name.toLowerCase().trim(); }));
+      const toAdd = newIngredients.filter(function(n) { return !existingNames.has(n.name.toLowerCase().trim()); });
+      const toUpdate = newIngredients.filter(function(n) { return existingNames.has(n.name.toLowerCase().trim()); });
+      let updated = ingredients.slice();
+      toUpdate.forEach(function(n) {
+        updated = updated.map(function(x) {
+          if (x.name.toLowerCase().trim() === n.name.toLowerCase().trim()) {
+            return Object.assign({}, x, n, { id: x.id });
+          }
+          return x;
+        });
+      });
+      updated = updated.concat(toAdd);
+      setIngredients(updated);
+      setImportStatus({
+        type: 'success',
+        msg: 'Imported ' + newIngredients.length + ' ingredients (' + toAdd.length + ' new, ' + toUpdate.length + ' updated)' + (errors.length > 0 ? '. ' + errors.length + ' rows skipped.' : '')
+      });
+      setTimeout(function() { setShowImport(false); setImportStatus(null); }, 2500);
+    } catch (e) {
+      setImportStatus({ type: 'error', msg: e.message || 'Import failed' });
+    }
+  }
+
+  function downloadTemplate() {
+    const headers = ['Name', 'Category', 'CP %', 'ME kcal/kg', 'Fat %', 'Fibre %', 'Ca %', 'P %', 'Lys %', 'Met %'];
+    const sample = [
+      ['Maize Grain', 'energy', 8.5, 3350, 3.8, 2.3, 0.02, 0.28, 0.24, 0.17],
+      ['Soybean Meal (44%)', 'protein', 44, 2230, 1.5, 6.5, 0.33, 0.65, 2.78, 0.64]
+    ];
+    exportToExcel([headers].concat(sample), 'ingredients_import_template.xlsx', 'Ingredients');
   }
 
   function saveIng() {
@@ -1101,13 +1328,66 @@ function IngredientsPage() {
     )
   ) : null;
 
+  const importModal = showImport ? h(Modal, {
+    title: 'Import Ingredients from Excel',
+    onClose: function() { setShowImport(false); setImportStatus(null); },
+    width: 540
+  },
+    h('div', {
+      style: { background: C.parchment, borderRadius: 8, padding: '12px 14px', marginBottom: 14, fontSize: 13, color: C.soil, lineHeight: 1.6 }
+    },
+      h('div', { style: { fontWeight: 700, marginBottom: 6 } }, 'Expected column headers:'),
+      h('div', { style: { fontFamily: "'DM Mono',monospace", fontSize: 11 } },
+        'Name, Category, CP %, ME kcal/kg, Fat %, Fibre %, Ca %, P %, Lys %, Met %'),
+      h('div', { style: { marginTop: 8, fontSize: 12 } },
+        'Categories: energy, protein, macromineral, micromineral, roughage, additive. ',
+        'Existing ingredients with matching names will be updated.')
+    ),
+    h(Btn, { onClick: downloadTemplate, variant: 'secondary', size: 'sm', style: { marginBottom: 12 } }, '\u{1F4E5} Download Template'),
+    h('div', null,
+      h('label', {
+        style: {
+          display: 'block',
+          padding: '22px',
+          border: '2px dashed ' + C.border,
+          borderRadius: 10,
+          textAlign: 'center',
+          cursor: 'pointer',
+          background: C.cream
+        }
+      },
+        h('div', { style: { fontSize: 28, marginBottom: 7 } }, '\u{1F4C4}'),
+        h('div', { style: { fontSize: 13, color: C.earth, fontWeight: 600 } }, 'Click to choose an Excel file (.xlsx)'),
+        h('input', {
+          type: 'file',
+          accept: '.xlsx,.xls',
+          onChange: function(e) { handleExcelImport(e.target.files[0]); },
+          style: { display: 'none' }
+        })
+      )
+    ),
+    importStatus ? h('div', {
+      style: {
+        marginTop: 14, padding: '10px 14px', borderRadius: 8, fontSize: 13,
+        background: importStatus.type === 'error' ? '#fde8e8' : importStatus.type === 'success' ? '#f0f9f4' : C.parchment,
+        color: importStatus.type === 'error' ? C.danger : importStatus.type === 'success' ? C.grass : C.muted,
+        border: '1px solid ' + (importStatus.type === 'error' ? C.danger : importStatus.type === 'success' ? C.grass : C.border) + '44'
+      }
+    }, importStatus.msg) : null
+  ) : null;
+
   return h('div', { style: { padding: '0 26px 26px' } },
+    toast ? h(Toast, { msg: toast.msg, type: toast.type }) : null,
     h(PageHdr, {
       title: '\u{1F33D} Ingredients',
       subtitle: 'Manage ingredient nutritional profiles',
-      action: h(Btn, { onClick: openAdd, variant: 'success' }, '+ Add Ingredient')
+      action: h('div', { style: { display: 'flex', gap: 8 } },
+        h(Btn, { onClick: function() { setShowImport(true); }, variant: 'secondary' }, '\u{1F4E4} Import Excel'),
+        h(Btn, { onClick: openAdd, variant: 'success' }, '+ Add Ingredient')
+      )
     }),
     formModal,
+    importModal,
     h(Card, null,
       h(CardTitle, null, 'All Ingredients'),
       h(Tbl, { cols: cols, rows: ingredients, emptyMsg: 'No ingredients defined.' })
@@ -1192,7 +1472,7 @@ function CustomersPage() {
 
 // ========== FORMULATOR PAGE ==========
 
-function FormulatorPage() {
+function FormulatorPage(props) {
   const ctx = useContext(Ctx);
   const ingredients = ctx.ingredients || [];
   const inventory = ctx.inventory || [];
@@ -1205,17 +1485,19 @@ function FormulatorPage() {
   const animalReqs = getAnimalReqs(db.get('animalReqs'));
   const speciesList = buildSpeciesList(animalReqs);
 
-  const [species, setSpecies] = useState('');
-  const [stage, setStage] = useState('');
-  const [batchKg, setBatchKg] = useState(100);
+  const preload = props && props.preload ? props.preload : null;
+
+  const [species, setSpecies] = useState(preload ? preload.species : '');
+  const [stage, setStage] = useState(preload ? preload.stage : '');
+  const [batchKg, setBatchKg] = useState(preload ? (preload.batchKg || 100) : 100);
   const [selPrice, setSelPrice] = useState('');
-  const [custId, setCustId] = useState('');
+  const [custId, setCustId] = useState(preload ? (preload.customerId || '') : '');
   const [showSave, setShowSave] = useState(false);
   const [fName, setFName] = useState('');
   const [showSell, setShowSell] = useState(false);
   const [pendingSale, setPendingSale] = useState(null);
   const [toast, setToast] = useState(null);
-  const [formula, setFormula] = useState(null);
+  const [formula, setFormula] = useState(preload ? preload.formula : null);
   const [nutrients, setNutrients] = useState(null);
   const [costPKg, setCostPKg] = useState(0);
   const [solveQuality, setSolveQuality] = useState('');
@@ -1276,9 +1558,34 @@ function FormulatorPage() {
     setSelIngrs(n);
   }
 
-  // Auto-solve on species/stage/selection change
+  // Effect: if preloaded formula, calculate its nutrients/cost on mount
+  const [preloadHandled, setPreloadHandled] = useState(false);
+  useEffect(function() {
+    if (preload && preload.formula && !preloadHandled) {
+      const ingrs = ingredients.filter(function(i) {
+        return preload.formula[i.id] !== undefined;
+      }).map(function(i) {
+        const inv = inventory.find(function(x) { return x.id === i.id; });
+        const sp = inv ? (inv.sellPriceDirect || Math.round((inv.lastPrice || 0) * (1 + (inv.margin || 20) / 100) * 100) / 100) : (i.price || 0);
+        return Object.assign({}, i, { price: sp });
+      });
+      const n = calcNutrients(preload.formula, ingrs);
+      const c = calcCost(preload.formula, ingrs);
+      setNutrients(n);
+      setCostPKg(c);
+      setSolveQuality('optimal');
+      if (preload.customerName) {
+        showT('Loaded saved formula "' + (preload.name || preload.formulaName || '') + '" for ' + preload.customerName);
+      }
+      setPreloadHandled(true);
+    }
+  }, [preload, ingredients.length]);
+
+  // Auto-solve on species/stage/selection change (skip if preload just loaded)
   useEffect(function() {
     if (!species || !stage) return;
+    if (preload && !preloadHandled) return;
+    if (preload && preloadHandled && formula === preload.formula) return; // skip first render after preload
     setFormula(null); setNutrients(null); setCostPKg(0);
     setAnfWarnings([]); setAnfExclusions([]); setBuySuggestions([]);
     setLoading(true);
@@ -1374,16 +1681,24 @@ function FormulatorPage() {
     const items = Object.entries(formula).map(function(entry) {
       const id = entry[0], pct = entry[1];
       const ing = ingrs.find(function(x) { return x.id === id; });
+      const inv = inventory.find(function(x) { return x.id === id; });
       const sp = getSellPriceForIng(ing || { id: id });
+      const buyPrice = inv ? (inv.lastPrice || 0) : 0;
       return {
         id: id, name: ing ? ing.name : '',
         pct: pct, qty: (pct / 100) * batchKg,
-        pricePerKg: sp
+        sellPricePerKg: sp,
+        buyPricePerKg: buyPrice,
+        pricePerKg: sp // legacy
       };
     });
+    const totalSellValue = items.reduce(function(s, i) { return s + i.qty * i.sellPricePerKg; }, 0);
+    const totalBuyCost = items.reduce(function(s, i) { return s + i.qty * i.buyPricePerKg; }, 0);
     setPendingSale({
       items: items,
-      totalCost: items.reduce(function(s, i) { return s + i.qty * i.pricePerKg; }, 0)
+      totalSellValue: totalSellValue,
+      totalBuyCost: totalBuyCost,
+      totalCost: totalBuyCost // legacy field
     });
     setShowSell(true);
   }
@@ -1405,23 +1720,27 @@ function FormulatorPage() {
     }));
     const agreedTotal = parseFloat(selPrice) * batchKg;
     const cust = customers.find(function(c) { return c.id === custId; });
+    const profit = agreedTotal - pendingSale.totalBuyCost;
     const newSale = {
       id: uid(), date: today(), species: species, stage: stage, batchKg: batchKg,
       customerId: custId || null,
       customerName: cust ? cust.name : 'Walk-in',
       customer: cust ? cust.name : 'Walk-in',
       product: species + ' - ' + stage + ' (' + batchKg + 'kg)',
-      cost: pendingSale.totalCost, total: agreedTotal,
-      totalRevenue: agreedTotal, totalCost: pendingSale.totalCost,
-      profit: agreedTotal - pendingSale.totalCost,
+      cost: pendingSale.totalBuyCost,
+      total: agreedTotal,
+      totalRevenue: agreedTotal,
+      totalCost: pendingSale.totalBuyCost,
+      profit: profit,
       sellPricePerKg: parseFloat(selPrice),
-      items: pendingSale.items
+      items: pendingSale.items,
+      formula: formula
     };
     setSales(sales.concat([newSale]));
     const ledger = db.get('stockLedger', []);
     const entry = {
       id: uid(), type: 'SALE', date: today(), product: newSale.product,
-      qty: batchKg, total: agreedTotal, costPerKg: costPKg,
+      qty: batchKg, total: agreedTotal,
       by: user ? user.name : ''
     };
     db.set('stockLedger', ledger.concat([entry]));
@@ -1558,7 +1877,7 @@ function FormulatorPage() {
   const sellModal = (showSell && pendingSale) ? h(Modal, {
     title: 'Confirm Sale',
     onClose: function() { setShowSell(false); },
-    width: 480
+    width: 520
   },
     h('div', {
       style: { background: C.parchment, borderRadius: 10, padding: '12px 16px', marginBottom: 14 }
@@ -1567,34 +1886,69 @@ function FormulatorPage() {
         style: { fontWeight: 700, color: C.earth, marginBottom: 6, fontFamily: "'Playfair Display',serif", fontSize: 16 }
       }, species + ' \u{2022} ' + stage + ' \u{2022} ' + batchKg + 'kg'),
       h('div', { style: { fontSize: 13, color: C.muted } },
-        'Cost of ingredients: ',
-        h('strong', { style: { color: C.danger, fontFamily: "'DM Mono',monospace" } }, 'KES ' + pendingSale.totalCost.toFixed(2))
+        'Ingredients total (at sell prices): ',
+        h('strong', { style: { color: C.earth, fontFamily: "'DM Mono',monospace" } },
+          'KES ' + pendingSale.totalSellValue.toFixed(2))
       )
     ),
+    // Show sell price breakdown only
+    h('div', {
+      style: { background: 'white', border: '1px solid ' + C.border, borderRadius: 10, padding: '10px 14px', marginBottom: 14, maxHeight: 180, overflowY: 'auto' }
+    },
+      h('div', {
+        style: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: C.muted, marginBottom: 6, fontFamily: "'DM Mono',monospace" }
+      }, 'Ingredient sell prices'),
+      pendingSale.items.map(function(item, i) {
+        return h('div', {
+          key: i,
+          style: { display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, borderBottom: i < pendingSale.items.length - 1 ? '1px solid ' + C.border : 'none' }
+        },
+          h('span', { style: { color: C.ink } }, item.name + ' (' + item.qty.toFixed(1) + ' kg)'),
+          h('span', { style: { color: C.grass, fontFamily: "'DM Mono',monospace", fontWeight: 600 } },
+            'KES ' + item.sellPricePerKg + '/kg')
+        );
+      })
+    ),
     h(Inp, {
-      label: 'Agreed Sell Price (KES/kg)',
+      label: 'Agreed Sell Price (KES/kg) - enter based on customer negotiation',
       value: selPrice,
       onChange: setSelPrice,
       type: 'number',
       placeholder: 'e.g. 65'
     }),
-    selPrice ? h('div', {
-      style: { background: '#f0f9f4', borderRadius: 10, padding: '12px 16px', fontSize: 13, border: '1px solid ' + C.leaf + '44' }
-    },
-      h('div', { style: { marginBottom: 6 } },
-        'Total Revenue: ',
-        h('strong', { style: { color: C.grass, fontFamily: "'DM Mono',monospace" } }, 'KES ' + (parseFloat(selPrice) * batchKg).toFixed(2))
-      ),
-      h('div', null,
-        'Profit: ',
-        h('strong', {
-          style: {
-            color: (parseFloat(selPrice) * batchKg - pendingSale.totalCost) > -1 ? C.grass : C.danger,
-            fontFamily: "'DM Mono',monospace"
-          }
-        }, 'KES ' + (parseFloat(selPrice) * batchKg - pendingSale.totalCost).toFixed(2))
-      )
-    ) : null,
+    selPrice ? (function() {
+      const totalRevenue = parseFloat(selPrice) * batchKg;
+      const totalBuyCost = pendingSale.totalBuyCost;
+      const profit = totalRevenue - totalBuyCost;
+      const marginPct = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
+      return h('div', {
+        style: { background: '#f0f9f4', borderRadius: 10, padding: '12px 16px', fontSize: 13, border: '1px solid ' + C.leaf + '44' }
+      },
+        h('div', { style: { marginBottom: 6 } },
+          h('span', null, 'Total Revenue (' + batchKg + 'kg x KES ' + selPrice + '): '),
+          h('strong', { style: { color: C.grass, fontFamily: "'DM Mono',monospace" } },
+            'KES ' + totalRevenue.toFixed(2))
+        ),
+        h('div', { style: { marginBottom: 6 } },
+          h('span', null, 'Profit (revenue - buy cost): '),
+          h('strong', {
+            style: {
+              color: profit > -1 ? C.grass : C.danger,
+              fontFamily: "'DM Mono',monospace"
+            }
+          }, 'KES ' + profit.toFixed(2))
+        ),
+        h('div', null,
+          h('span', null, 'Margin: '),
+          h('strong', {
+            style: {
+              color: marginPct > -1 ? C.grass : C.danger,
+              fontFamily: "'DM Mono',monospace"
+            }
+          }, marginPct.toFixed(1) + '%')
+        )
+      );
+    })() : null,
     h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
       h(Btn, { onClick: function() { setShowSell(false); }, variant: 'secondary' }, 'Cancel'),
       h(Btn, {
@@ -1755,6 +2109,9 @@ function FormulatorPage() {
         }, batchKg + 'kg batch \u{2022} ' + formulaRows.length + ' ingredients')
       ),
       h('div', { style: { textAlign: 'right' } },
+        h('div', {
+          style: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: "'DM Mono',monospace", textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 2 }
+        }, 'Ingredient sell value'),
         h('div', {
           style: { fontSize: 26, fontFamily: "'Playfair Display',serif", fontWeight: 900, color: C.harvest }
         }, 'KES ' + costPKg.toFixed(2) + '/kg'),
@@ -2001,91 +2358,267 @@ function ReportsPage() {
   const sales = ctx.sales || [];
   const inventory = ctx.inventory || [];
   const purchases = ctx.purchases || [];
+  const customers = ctx.customers || [];
 
   const [period, setPeriod] = useState('30');
 
+  const periodDays = parseInt(period);
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - parseInt(period));
+  cutoff.setDate(cutoff.getDate() - periodDays);
   const filtered = sales.filter(function(s) { return new Date(s.date) >= cutoff; });
   const rev = filtered.reduce(function(s, x) { return s + (x.total || x.totalRevenue || 0); }, 0);
   const cost = filtered.reduce(function(s, x) { return s + (x.cost || x.totalCost || 0); }, 0);
   const profit = rev - cost;
+  const marginPct = rev > 0 ? (profit / rev) * 100 : 0;
+  const avgSale = filtered.length > 0 ? rev / filtered.length : 0;
+
+  // Previous period comparison
+  const prevCutoff = new Date();
+  prevCutoff.setDate(prevCutoff.getDate() - periodDays * 2);
+  const prevFiltered = sales.filter(function(s) {
+    const d = new Date(s.date);
+    return d >= prevCutoff && d < cutoff;
+  });
+  const prevRev = prevFiltered.reduce(function(s, x) { return s + (x.total || x.totalRevenue || 0); }, 0);
+  const revChange = prevRev > 0 ? ((rev - prevRev) / prevRev) * 100 : (rev > 0 ? 100 : 0);
 
   // Top selling products
   const productCounts = {};
   filtered.forEach(function(s) {
     const key = s.product || 'Unknown';
-    productCounts[key] = (productCounts[key] || 0) + (s.total || s.totalRevenue || 0);
+    if (!productCounts[key]) productCounts[key] = { revenue: 0, count: 0, kg: 0, profit: 0 };
+    productCounts[key].revenue += s.total || s.totalRevenue || 0;
+    productCounts[key].count += 1;
+    productCounts[key].kg += s.batchKg || 0;
+    productCounts[key].profit += s.profit || 0;
   });
   const topProducts = Object.entries(productCounts)
-    .sort(function(a, b) { return b[1] - a[1]; })
-    .slice(0, 5);
+    .sort(function(a, b) { return b[1].revenue - a[1].revenue; })
+    .slice(0, 10);
 
   // Top customers
   const customerCounts = {};
   filtered.forEach(function(s) {
     const key = s.customerName || s.customer || 'Walk-in';
-    customerCounts[key] = (customerCounts[key] || 0) + (s.total || s.totalRevenue || 0);
+    if (!customerCounts[key]) customerCounts[key] = { revenue: 0, count: 0, profit: 0 };
+    customerCounts[key].revenue += s.total || s.totalRevenue || 0;
+    customerCounts[key].count += 1;
+    customerCounts[key].profit += s.profit || 0;
   });
   const topCustomers = Object.entries(customerCounts)
-    .sort(function(a, b) { return b[1] - a[1]; })
-    .slice(0, 5);
+    .sort(function(a, b) { return b[1].revenue - a[1].revenue; })
+    .slice(0, 10);
+
+  // Daily revenue trend (simple bar chart data)
+  const dailyRev = {};
+  filtered.forEach(function(s) {
+    const d = s.date;
+    dailyRev[d] = (dailyRev[d] || 0) + (s.total || s.totalRevenue || 0);
+  });
+  const dailySorted = Object.entries(dailyRev).sort(function(a, b) { return a[0].localeCompare(b[0]); });
+  const maxDaily = Math.max.apply(null, dailySorted.map(function(d) { return d[1]; }).concat([1]));
+
+  // Ingredient usage breakdown (from sales items if available)
+  const ingUsage = {};
+  filtered.forEach(function(s) {
+    if (s.items && Array.isArray(s.items)) {
+      s.items.forEach(function(item) {
+        if (!ingUsage[item.name]) ingUsage[item.name] = { kg: 0, revenue: 0 };
+        ingUsage[item.name].kg += item.qty || 0;
+        ingUsage[item.name].revenue += (item.qty || 0) * (item.pricePerKg || 0);
+      });
+    }
+  });
+  const topIngredients = Object.entries(ingUsage)
+    .sort(function(a, b) { return b[1].kg - a[1].kg; })
+    .slice(0, 10);
+
+  async function exportReport() {
+    const headers = ['Metric', 'Value'];
+    const rows = [
+      headers,
+      ['Period', 'Last ' + period + ' days'],
+      ['Total Sales', filtered.length],
+      ['Total Revenue', rev],
+      ['Total Cost', cost],
+      ['Total Profit', profit],
+      ['Margin %', marginPct.toFixed(2)],
+      ['Average Sale', avgSale],
+      ['Change vs previous period %', revChange.toFixed(2)],
+      [''],
+      ['Top Products', ''],
+      ['Product', 'Revenue', 'Sales', 'Kg', 'Profit'],
+    ];
+    topProducts.forEach(function(p) {
+      rows.push([p[0], p[1].revenue, p[1].count, p[1].kg, p[1].profit]);
+    });
+    rows.push(['']);
+    rows.push(['Top Customers', '']);
+    rows.push(['Customer', 'Revenue', 'Sales', 'Profit']);
+    topCustomers.forEach(function(c) {
+      rows.push([c[0], c[1].revenue, c[1].count, c[1].profit]);
+    });
+    rows.push(['']);
+    rows.push(['Daily Revenue']);
+    rows.push(['Date', 'Revenue']);
+    dailySorted.forEach(function(d) { rows.push([d[0], d[1]]); });
+    await exportToExcel(rows, 'wamifugo_report_' + today() + '.xlsx', 'Report');
+  }
+
+  const trendBars = dailySorted.length > 0 ? h('div', {
+    style: {
+      display: 'flex',
+      alignItems: 'flex-end',
+      gap: 3,
+      height: 120,
+      padding: '14px 16px 8px',
+      background: C.cream,
+      borderRadius: 8,
+      overflowX: 'auto'
+    }
+  },
+    dailySorted.map(function(d) {
+      const height = Math.max(6, (d[1] / maxDaily) * 100);
+      return h('div', {
+        key: d[0],
+        title: d[0] + ': ' + fmtKES(d[1]),
+        style: {
+          flex: '1 1 14px',
+          minWidth: 14,
+          maxWidth: 40,
+          height: height + '%',
+          background: 'linear-gradient(to top, ' + C.earth + ', ' + C.clay + ')',
+          borderRadius: '4px 4px 0 0',
+          cursor: 'pointer',
+          transition: 'opacity 0.2s',
+          position: 'relative'
+        }
+      });
+    })
+  ) : h('div', {
+    style: { padding: 30, textAlign: 'center', color: C.muted, fontSize: 13 }
+  }, 'No sales data for this period');
 
   return h('div', { style: { padding: '0 26px 26px' } },
     h(PageHdr, {
       title: '\u{1F4C8} Reports & Analytics',
       subtitle: 'Business performance insights',
-      action: h(Sel, {
-        value: period,
-        onChange: setPeriod,
-        options: [
-          { value: '7', label: 'Last 7 days' },
-          { value: '30', label: 'Last 30 days' },
-          { value: '90', label: 'Last 90 days' },
-          { value: '365', label: 'Last year' }
-        ]
-      })
+      action: h('div', { style: { display: 'flex', gap: 8 } },
+        h(Sel, {
+          value: period,
+          onChange: setPeriod,
+          options: [
+            { value: '7', label: 'Last 7 days' },
+            { value: '30', label: 'Last 30 days' },
+            { value: '90', label: 'Last 90 days' },
+            { value: '365', label: 'Last year' }
+          ]
+        }),
+        h(Btn, { onClick: exportReport, variant: 'success' }, '\u{1F4E5} Export Excel')
+      )
     }),
-    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 18 } },
-      h(StatCard, { label: 'Sales', value: filtered.length, color: C.earth, icon: 'S' }),
-      h(StatCard, { label: 'Revenue', value: fmtKES(rev), color: C.grass, icon: '$' }),
-      h(StatCard, { label: 'Cost', value: fmtKES(cost), color: C.warning, icon: 'C' }),
-      h(StatCard, { label: 'Profit', value: fmtKES(profit), color: profit > -1 ? C.grass : C.danger, icon: 'P' })
+    // Top stats
+    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 18 } },
+      h(StatCard, { label: 'Sales Count', value: filtered.length, color: C.earth, icon: '\u{1F6D2}' }),
+      h(StatCard, {
+        label: 'Revenue',
+        value: fmtKES(rev),
+        sub: (revChange > -1 ? '+' : '') + revChange.toFixed(1) + '% vs prev',
+        color: C.grass, icon: '\u{1F4B0}'
+      }),
+      h(StatCard, { label: 'Total Cost', value: fmtKES(cost), color: C.warning, icon: '\u{1F4B5}' }),
+      h(StatCard, {
+        label: 'Profit',
+        value: fmtKES(profit),
+        sub: marginPct.toFixed(1) + '% margin',
+        color: profit > -1 ? C.grass : C.danger,
+        icon: '\u{1F4C8}'
+      }),
+      h(StatCard, { label: 'Average Sale', value: fmtKES(avgSale), color: C.clay, icon: '\u{1F4CA}' })
     ),
-    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+    // Trend chart
+    h(Card, { style: { marginBottom: 16 } },
+      h(CardTitle, null, '\u{1F4C5} Daily Revenue Trend'),
+      trendBars
+    ),
+    // Two column grid for top products and customers
+    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(360px,1fr))', gap: 14, marginBottom: 14 } },
       h(Card, null,
-        h(CardTitle, null, 'Top Products by Revenue'),
-        h('div', { style: { padding: 14 } },
+        h(CardTitle, null, '\u{1F3C6} Top Products by Revenue'),
+        h('div', { style: { padding: '10px 4px' } },
           topProducts.length === 0
-            ? h('div', { style: { textAlign: 'center', padding: 20, color: C.muted } }, 'No data for this period')
-            : topProducts.map(function(p) {
+            ? h('div', { style: { textAlign: 'center', padding: 30, color: C.muted } }, 'No data for this period')
+            : topProducts.map(function(p, i) {
                 return h('div', {
                   key: p[0],
-                  style: { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid ' + C.border }
+                  style: {
+                    display: 'grid',
+                    gridTemplateColumns: '28px 1fr auto auto',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '9px 14px',
+                    borderBottom: i === topProducts.length - 1 ? 'none' : '1px solid ' + C.border
+                  }
                 },
-                  h('span', { style: { fontSize: 12, color: C.earth, fontWeight: 600 } }, p[0]),
-                  h('span', { style: { fontSize: 12, color: C.grass, fontWeight: 700 } }, fmtKES(p[1]))
+                  h('div', {
+                    style: { fontSize: 13, fontWeight: 700, color: C.muted, fontFamily: "'DM Mono',monospace" }
+                  }, String(i + 1) + '.'),
+                  h('div', null,
+                    h('div', { style: { fontSize: 13, color: C.earth, fontWeight: 600 } }, p[0]),
+                    h('div', { style: { fontSize: 11, color: C.muted, marginTop: 2 } },
+                      p[1].count + ' sales \u2022 ' + fmt(p[1].kg) + ' kg')
+                  ),
+                  h('div', { style: { fontSize: 13, color: C.grass, fontWeight: 700, fontFamily: "'DM Mono',monospace" } },
+                    fmtKES(p[1].revenue))
                 );
               })
         )
       ),
       h(Card, null,
-        h(CardTitle, null, 'Top Customers'),
-        h('div', { style: { padding: 14 } },
+        h(CardTitle, null, '\u{1F465} Top Customers'),
+        h('div', { style: { padding: '10px 4px' } },
           topCustomers.length === 0
-            ? h('div', { style: { textAlign: 'center', padding: 20, color: C.muted } }, 'No data for this period')
-            : topCustomers.map(function(c) {
+            ? h('div', { style: { textAlign: 'center', padding: 30, color: C.muted } }, 'No data for this period')
+            : topCustomers.map(function(c, i) {
                 return h('div', {
                   key: c[0],
-                  style: { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid ' + C.border }
+                  style: {
+                    display: 'grid',
+                    gridTemplateColumns: '28px 1fr auto',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '9px 14px',
+                    borderBottom: i === topCustomers.length - 1 ? 'none' : '1px solid ' + C.border
+                  }
                 },
-                  h('span', { style: { fontSize: 12, color: C.earth, fontWeight: 600 } }, c[0]),
-                  h('span', { style: { fontSize: 12, color: C.grass, fontWeight: 700 } }, fmtKES(c[1]))
+                  h('div', {
+                    style: { fontSize: 13, fontWeight: 700, color: C.muted, fontFamily: "'DM Mono',monospace" }
+                  }, String(i + 1) + '.'),
+                  h('div', null,
+                    h('div', { style: { fontSize: 13, color: C.earth, fontWeight: 600 } }, c[0]),
+                    h('div', { style: { fontSize: 11, color: C.muted, marginTop: 2 } },
+                      c[1].count + ' sales \u2022 profit ' + fmtKES(c[1].profit))
+                  ),
+                  h('div', { style: { fontSize: 13, color: C.grass, fontWeight: 700, fontFamily: "'DM Mono',monospace" } },
+                    fmtKES(c[1].revenue))
                 );
               })
         )
       )
-    )
+    ),
+    // Ingredient usage if we have data
+    topIngredients.length > 0 ? h(Card, null,
+      h(CardTitle, null, '\u{1F33D} Ingredient Usage (from sales)'),
+      h(Tbl, {
+        cols: [
+          { key: 'name', label: 'Ingredient', render: function(r) { return r.name; } },
+          { key: 'kg', label: 'Kg Sold', render: function(r) { return h('span', { style: { fontFamily: "'DM Mono',monospace" } }, fmt(r.kg, 1) + ' kg'); } },
+          { key: 'revenue', label: 'Revenue', render: function(r) { return h('span', { style: { color: C.grass, fontWeight: 700, fontFamily: "'DM Mono',monospace" } }, fmtKES(r.revenue)); } }
+        ],
+        rows: topIngredients.map(function(e) { return { name: e[0], kg: e[1].kg, revenue: e[1].revenue }; }),
+        emptyMsg: 'No ingredient data'
+      })
+    ) : null
   );
 }
 
@@ -2271,6 +2804,8 @@ function NutritionPage() {
   const [showForm, setShowForm] = useState(false);
   const [editReq, setEditReq] = useState(null);
   const [filterCat, setFilterCat] = useState('');
+  const [showImport, setShowImport] = useState(false);
+  const [importStatus, setImportStatus] = useState(null);
 
   const blank = {
     category: '', stage: '',
@@ -2307,6 +2842,89 @@ function NutritionPage() {
   function resetDefaults() {
     if (!window.confirm('Reset all animal requirements to defaults?')) return;
     saveAll(SEED_ANIMAL_REQS);
+  }
+
+  async function handleReqsImport(file) {
+    if (!file) return;
+    setImportStatus({ type: 'loading', msg: 'Reading Excel file...' });
+    try {
+      const result = await readExcelFile(file);
+      const rows = result.rows || [];
+      if (rows.length === 0) {
+        setImportStatus({ type: 'error', msg: 'The file has no data rows.' });
+        return;
+      }
+      const norm = function(k) { return String(k).toLowerCase().replace(/[^a-z0-9]/g, ''); };
+      const imported = [];
+      const errors = [];
+      rows.forEach(function(row, i) {
+        const keys = Object.keys(row);
+        const get = function(possibleNames) {
+          for (const name of possibleNames) {
+            const k = keys.find(function(x) { return norm(x) === norm(name); });
+            if (k) return row[k];
+          }
+          return null;
+        };
+        const category = get(['category', 'species']);
+        const stage = get(['stage', 'productionstage']);
+        if (!category || !stage) { errors.push('Row ' + (i + 2) + ': missing category or stage'); return; }
+        const parseRange = function(min, max) {
+          return [parseFloat(min) || 0, parseFloat(max) || 0];
+        };
+        imported.push({
+          id: 'ar_' + uid(),
+          category: String(category).trim(),
+          stage: String(stage).trim(),
+          cp: parseRange(get(['cpmin', 'cpminpercent']), get(['cpmax', 'cpmaxpercent'])),
+          me: parseRange(get(['memin', 'memin']), get(['memax', 'memaxkcalkg'])),
+          fat: parseRange(get(['fatmin']), get(['fatmax'])),
+          fibre: parseRange(get(['fibremin', 'fibermin']), get(['fibremax', 'fibermax'])),
+          ca: parseRange(get(['camin', 'calciummin']), get(['camax', 'calciummax'])),
+          p: parseRange(get(['pmin', 'phosphorusmin']), get(['pmax', 'phosphorusmax'])),
+          lys: parseRange(get(['lysmin', 'lysinemin']), get(['lysmax', 'lysinemax'])),
+          met: parseRange(get(['metmin', 'methioninemin']), get(['metmax', 'methioninemax']))
+        });
+      });
+      if (imported.length === 0) {
+        setImportStatus({ type: 'error', msg: 'No valid rows. ' + errors.slice(0, 3).join('; ') });
+        return;
+      }
+      // Merge: update existing rows with same category+stage, add new
+      const byKey = function(r) { return r.category.toLowerCase() + '|' + r.stage.toLowerCase(); };
+      const existingKeys = new Set(reqs.map(byKey));
+      const toAdd = imported.filter(function(i) { return !existingKeys.has(byKey(i)); });
+      const toUpdate = imported.filter(function(i) { return existingKeys.has(byKey(i)); });
+      let updated = reqs.slice();
+      toUpdate.forEach(function(n) {
+        updated = updated.map(function(x) {
+          if (byKey(x) === byKey(n)) return Object.assign({}, x, n, { id: x.id });
+          return x;
+        });
+      });
+      updated = updated.concat(toAdd);
+      saveAll(updated);
+      setImportStatus({
+        type: 'success',
+        msg: 'Imported ' + imported.length + ' requirements (' + toAdd.length + ' new, ' + toUpdate.length + ' updated)' + (errors.length > 0 ? '. ' + errors.length + ' rows skipped.' : '')
+      });
+      setTimeout(function() { setShowImport(false); setImportStatus(null); }, 2500);
+    } catch (e) {
+      setImportStatus({ type: 'error', msg: e.message || 'Import failed' });
+    }
+  }
+
+  function downloadReqsTemplate() {
+    const headers = ['Category', 'Stage',
+      'CP Min', 'CP Max', 'ME Min', 'ME Max',
+      'Fat Min', 'Fat Max', 'Fibre Min', 'Fibre Max',
+      'Ca Min', 'Ca Max', 'P Min', 'P Max',
+      'Lys Min', 'Lys Max', 'Met Min', 'Met Max'];
+    const sample = [
+      ['Poultry (Broiler)', 'Starter (0-21 days)', 22, 24, 2950, 3050, 3, 8, 0, 4, 0.9, 1.05, 0.45, 0.55, 1.25, 1.45, 0.5, 0.6],
+      ['Dairy Cattle', 'Lactating', 14, 18, 2500, 2800, 3, 6, 15, 25, 0.6, 1, 0.3, 0.5, 0.6, 0.8, 0.2, 0.3]
+    ];
+    exportToExcel([headers].concat(sample), 'animal_requirements_template.xlsx', 'Requirements');
   }
 
   const categories = Array.from(new Set(reqs.map(function(r) { return r.category; })));
@@ -2382,17 +3000,60 @@ function NutritionPage() {
     }}
   ];
 
+  const importModal = showImport ? h(Modal, {
+    title: 'Import Animal Requirements from Excel',
+    onClose: function() { setShowImport(false); setImportStatus(null); },
+    width: 580
+  },
+    h('div', {
+      style: { background: C.parchment, borderRadius: 8, padding: '12px 14px', marginBottom: 14, fontSize: 13, color: C.soil, lineHeight: 1.6 }
+    },
+      h('div', { style: { fontWeight: 700, marginBottom: 6 } }, 'Expected columns:'),
+      h('div', { style: { fontFamily: "'DM Mono',monospace", fontSize: 11 } },
+        'Category, Stage, CP Min, CP Max, ME Min, ME Max, Fat Min, Fat Max, Fibre Min, Fibre Max, Ca Min, Ca Max, P Min, P Max, Lys Min, Lys Max, Met Min, Met Max'),
+      h('div', { style: { marginTop: 8, fontSize: 12 } },
+        'Existing rows with the same Category+Stage will be updated.')
+    ),
+    h(Btn, { onClick: downloadReqsTemplate, variant: 'secondary', size: 'sm', style: { marginBottom: 12 } }, '\u{1F4E5} Download Template'),
+    h('div', null,
+      h('label', {
+        style: {
+          display: 'block', padding: '22px', border: '2px dashed ' + C.border,
+          borderRadius: 10, textAlign: 'center', cursor: 'pointer', background: C.cream
+        }
+      },
+        h('div', { style: { fontSize: 28, marginBottom: 7 } }, '\u{1F4C4}'),
+        h('div', { style: { fontSize: 13, color: C.earth, fontWeight: 600 } }, 'Click to choose an Excel file (.xlsx)'),
+        h('input', {
+          type: 'file', accept: '.xlsx,.xls',
+          onChange: function(e) { handleReqsImport(e.target.files[0]); },
+          style: { display: 'none' }
+        })
+      )
+    ),
+    importStatus ? h('div', {
+      style: {
+        marginTop: 14, padding: '10px 14px', borderRadius: 8, fontSize: 13,
+        background: importStatus.type === 'error' ? '#fde8e8' : importStatus.type === 'success' ? '#f0f9f4' : C.parchment,
+        color: importStatus.type === 'error' ? C.danger : importStatus.type === 'success' ? C.grass : C.muted,
+        border: '1px solid ' + (importStatus.type === 'error' ? C.danger : importStatus.type === 'success' ? C.grass : C.border) + '44'
+      }
+    }, importStatus.msg) : null
+  ) : null;
+
   return h('div', { style: { padding: '0 26px 26px' } },
     h(PageHdr, {
       title: '\u{2697} Nutritional Requirements',
       subtitle: 'Reference: NRC 2012, Evonik Amino Dat, ILRI East Africa',
       action: h('div', { style: { display: 'flex', gap: 6 } },
+        h(Btn, { onClick: function() { setShowImport(true); }, variant: 'secondary', size: 'sm' }, '\u{1F4E4} Import Excel'),
         h(Btn, { onClick: resetDefaults, variant: 'secondary', size: 'sm' }, 'Reset to Defaults'),
         h(Btn, { onClick: openAdd, variant: 'success', size: 'sm' }, '+ Add Stage')
       )
     }),
     formModal,
-    h('div', { style: { marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' } },
+    importModal,
+    h('div', { style: { marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
       h('span', { style: { fontSize: 12, color: C.muted } }, 'Filter by species:'),
       h(Btn, { size: 'sm', variant: filterCat === '' ? 'primary' : 'secondary', onClick: function() { setFilterCat(''); } }, 'All'),
       categories.map(function(c) {
@@ -2955,17 +3616,167 @@ function ResourcesPage() {
   );
 }
 
+// ========== SAVED FORMULAS PAGE ==========
+
+function SavedFormulasPage(props) {
+  const ctx = useContext(Ctx);
+  const customers = ctx.customers || [];
+  const user = ctx.user;
+  const [saved, setSaved] = useState(function() { return db.get('savedFormulas', []); });
+  const [selCust, setSelCust] = useState('');
+  const [toast, setToast] = useState(null);
+
+  function showT(msg, type) {
+    setToast({ msg: msg, type: type || 'success' });
+    setTimeout(function() { setToast(null); }, 3500);
+  }
+
+  useEffect(function() {
+    setSaved(db.get('savedFormulas', []) || []);
+  }, []);
+
+  const filtered = selCust
+    ? saved.filter(function(s) { return s.customerId === selCust; })
+    : saved;
+
+  // Group by customer
+  const byCustomer = {};
+  filtered.forEach(function(s) {
+    const key = s.customerName || '- Walk-in / Untagged -';
+    if (!byCustomer[key]) byCustomer[key] = [];
+    byCustomer[key].push(s);
+  });
+  const customerGroups = Object.entries(byCustomer).sort(function(a, b) {
+    return a[0].localeCompare(b[0]);
+  });
+
+  function reuseFormula(f) {
+    // Navigate to formulator with preloaded formula
+    props.setPreload({
+      species: f.species,
+      stage: f.stage,
+      batchKg: f.batchKg || 100,
+      customerId: f.customerId || '',
+      customerName: f.customerName,
+      formula: f.formula,
+      nutrients: f.nutrients,
+      name: f.name
+    });
+    props.setPage('formulator');
+  }
+
+  function deleteFormula(f) {
+    if (!window.confirm('Delete saved formula "' + f.name + '"?')) return;
+    const next = saved.filter(function(s) { return s.id !== f.id; });
+    db.set('savedFormulas', next);
+    serverPush('savedFormulas', next);
+    setSaved(next);
+    showT('Formula deleted');
+  }
+
+  return h('div', { style: { padding: '0 26px 26px' } },
+    toast ? h(Toast, { msg: toast.msg, type: toast.type }) : null,
+    h(PageHdr, {
+      title: '\u{1F4BE} Saved Formulas',
+      subtitle: 'Reuse previous formulations for returning customers',
+      action: h(Sel, {
+        value: selCust,
+        onChange: setSelCust,
+        options: [{ value: '', label: 'All customers' }].concat(
+          customers.map(function(c) { return { value: c.id, label: c.name }; })
+        ),
+        style: { minWidth: 200 }
+      })
+    }),
+    saved.length === 0 ? h(Card, null,
+      h('div', {
+        style: { padding: 40, textAlign: 'center', color: C.muted }
+      },
+        h('div', { style: { fontSize: 40, marginBottom: 10 } }, '\u{1F4BE}'),
+        h('div', { style: { fontFamily: "'Playfair Display',serif", fontSize: 20, color: C.clay, marginBottom: 7 } }, 'No saved formulas yet'),
+        h('div', { style: { fontSize: 13 } }, 'Use the Formulator and click "Save Formula" to store mixtures for reuse.')
+      )
+    ) : customerGroups.length === 0 ? h(Card, null,
+      h('div', {
+        style: { padding: 30, textAlign: 'center', color: C.muted }
+      }, 'No saved formulas match this filter.')
+    ) : customerGroups.map(function(group) {
+      const custName = group[0];
+      const formulas = group[1];
+      return h(Card, { key: custName, style: { marginBottom: 14 } },
+        h(CardTitle, null, '\u{1F464} ' + custName + '  (' + formulas.length + ' formula' + (formulas.length === 1 ? '' : 's') + ')'),
+        h('div', { style: { padding: 0 } },
+          formulas.map(function(f, i) {
+            return h('div', {
+              key: f.id,
+              style: {
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '14px 18px', gap: 14,
+                borderBottom: i < formulas.length - 1 ? '1px solid ' + C.border : 'none',
+                background: i % 2 === 0 ? 'white' : C.cream
+              }
+            },
+              h('div', { style: { flex: 1 } },
+                h('div', {
+                  style: { fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 700, color: C.earth, marginBottom: 4 }
+                }, f.name || 'Unnamed formula'),
+                h('div', { style: { display: 'flex', gap: 14, fontSize: 12, color: C.muted, flexWrap: 'wrap' } },
+                  h('span', null, '\u{1F43E} ' + f.species),
+                  h('span', null, '\u{1F4CC} ' + f.stage),
+                  h('span', null, '\u{1F4E6} ' + (f.batchKg || '-') + ' kg'),
+                  h('span', null, '\u{1F4C5} Saved ' + (f.savedOn || '-')),
+                  f.costPerKg ? h('span', {
+                    style: { color: C.grass, fontWeight: 700, fontFamily: "'DM Mono',monospace" }
+                  }, 'KES ' + f.costPerKg.toFixed(2) + '/kg') : null,
+                  h('span', { style: { color: C.muted } },
+                    Object.keys(f.formula || {}).length + ' ingredients')
+                )
+              ),
+              h('div', { style: { display: 'flex', gap: 6 } },
+                h(Btn, {
+                  onClick: function() { reuseFormula(f); },
+                  variant: 'success',
+                  size: 'sm'
+                }, '\u{1F504} Reuse & Sell'),
+                h(Btn, {
+                  onClick: function() { deleteFormula(f); },
+                  variant: 'danger',
+                  size: 'sm'
+                }, 'Del')
+              )
+            );
+          })
+        )
+      );
+    })
+  );
+}
+
 // ========== PAGES COMPONENT ==========
 
 export default function Pages(props) {
   const ctx = useContext(Ctx);
   const user = props.user;
+  const [preload, setPreload] = useState(null);
+
+  // Clear preload when navigating away from formulator
+  useEffect(function() {
+    if (props.page !== 'formulator' && preload) {
+      setPreload(null);
+    }
+  }, [props.page]);
 
   if (!user) return h(LoginPage, { onLogin: props.onLogin });
 
   const pageMap = {
     dashboard: function() { return h(DashboardPage, null); },
-    formulator: function() { return h(FormulatorPage, null); },
+    formulator: function() { return h(FormulatorPage, { preload: preload }); },
+    saved_formulas: function() {
+      return h(SavedFormulasPage, {
+        setPreload: setPreload,
+        setPage: props.setPage
+      });
+    },
     inventory: function() { return h(InventoryPage, null); },
     customers: function() { return h(CustomersPage, null); },
     sales: function() { return h(SalesPage, null); },

@@ -1,19 +1,12 @@
 {
-  "name": "wamifugo-client",
+  "name": "wamifugo",
   "version": "1.0.0",
-  "private": true,
-  "type": "module",
+  "description": "Wa-Mifugo Feeds Management System",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "cd client && npm install && npm run build",
+    "start": "cd server && node index.js"
   },
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.0.8"
+  "engines": {
+    "node": "20.x"
   }
 }

@@ -34,3 +34,34 @@ export const fmtKES = (n) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+
+// ── EXCEL EXPORT HELPER ──────────────────────────────────────────────────────
+export async function exportToExcel(rows, filename, sheetName) {
+  try {
+    const XLSX = await import('xlsx');
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Sheet1');
+    XLSX.writeFile(wb, filename);
+    return true;
+  } catch (e) {
+    console.error('Excel export failed:', e);
+    return false;
+  }
+}
+
+// ── EXCEL IMPORT HELPER ──────────────────────────────────────────────────────
+export async function readExcelFile(file) {
+  try {
+    const XLSX = await import('xlsx');
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const firstSheet = wb.SheetNames[0];
+    const ws = wb.Sheets[firstSheet];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    return { rows, sheetNames: wb.SheetNames };
+  } catch (e) {
+    console.error('Excel read failed:', e);
+    throw new Error('Could not read Excel file: ' + e.message);
+  }
+}
