@@ -1868,10 +1868,12 @@ function FormulatorPage(props) {
 
   function getANFStatus(id) {
     if (!species) return 'neutral';
-    const lim = getANFLimit(id, species);
-    if (!lim) return 'neutral';
-    if (lim.maxPct === 0) return 'excluded';
-    if (lim.maxPct < 6) return 'caution';
+    const ing = ingredients.find(function(x) { return x.id === id; });
+    if (!ing) return 'neutral';
+    const req = (species && stage) ? getReqForStage(animalReqs, species, stage) : null;
+    const cap = resolveMaxIncl(ing, req, species);
+    if (cap === 0) return 'excluded';
+    if (cap < 6) return 'caution';
     return 'neutral';
   }
 
