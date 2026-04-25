@@ -2446,7 +2446,7 @@ function FormulatorPage(props) {
               marginBottom: 8,
               fontFamily: "'DM Mono',monospace"
             }
-          }, 'To boost ' + s.nutrientLabel + ' (short by ' + s.shortfall.toFixed(2) + ')'),
+          }, 'To boost ' + s.nutrientLabel + (s.shortfall ? ' (short by ' + s.shortfall.toFixed(2) + ')' : '')),
           h('div', {
             style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 10 }
           },

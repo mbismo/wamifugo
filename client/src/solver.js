@@ -740,7 +740,8 @@ function suggestIngredientsToBuy(gaps, allIngredients, inStockIds) {
   Object.entries(gaps).forEach(function(entry) {
     const nut = entry[0];
     const gap = entry[1];
-    if (gap.shortfall < 0.01) return;
+    // Only suggest buys for SHORTFALLS (not excesses — you can't fix an excess by buying more of something)
+    if (!gap.shortfall || gap.shortfall < 0.01) return;
 
     const candidates = outOfStock
       .filter(function(i) { return (parseFloat(i[nut]) || 0) > 0; })
