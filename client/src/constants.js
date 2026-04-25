@@ -1372,3 +1372,66 @@ export function buildSpeciesList(reqs) {
   const cats = getAnimalCategories(reqs);
   return cats.map(cat => ({ value: cat, label: cat, icon: CATEGORY_ICONS[cat] || '🐾' }));
 }
+
+// ── ANTI-NUTRITIVE FACTOR DEFAULTS ────────────────────────────────────────────
+// Used as fall-back inclusion limits when an animal requirement has no
+// explicit `inclusionOverrides`. Sourced from NRC 2012 / ILRI references.
+export const ANF_DEFAULTS = {
+  'ing_6': { // Cottonseed cake - Gossypol
+    'Poultry (Broiler)': 8, 'Poultry (Layer)': 5, 'Poultry (Kienyeji)': 8,
+    'Swine': 10, 'Dairy Cattle': 20, 'Beef Cattle': 20,
+    'Rabbit': 10, 'Fish (Tilapia)': 5, 'Goat / Sheep': 15,
+  },
+  'ing_14': { // Cassava - HCN
+    'Poultry (Broiler)': 15, 'Poultry (Layer)': 10, 'Poultry (Kienyeji)': 15,
+    'Swine': 20, 'Dairy Cattle': 30, 'Beef Cattle': 30,
+    'Rabbit': 15, 'Fish (Tilapia)': 10, 'Goat / Sheep': 30,
+  },
+  'ing_18': { // Urea - NPN
+    'Poultry (Broiler)': 0, 'Poultry (Layer)': 0, 'Poultry (Kienyeji)': 0,
+    'Swine': 0, 'Dairy Cattle': 1, 'Beef Cattle': 1,
+    'Rabbit': 0, 'Fish (Tilapia)': 0, 'Goat / Sheep': 1,
+  },
+  'ing_13': { // Sorghum - tannins
+    'Poultry (Broiler)': 20, 'Poultry (Layer)': 15, 'Poultry (Kienyeji)': 20,
+    'Swine': 30, 'Dairy Cattle': 40, 'Beef Cattle': 40,
+    'Rabbit': 20, 'Fish (Tilapia)': 15, 'Goat / Sheep': 40,
+  },
+  'ing_17': { // Blood meal - amino imbalance
+    'Poultry (Broiler)': 4, 'Poultry (Layer)': 3, 'Poultry (Kienyeji)': 4,
+    'Swine': 5, 'Dairy Cattle': 5, 'Beef Cattle': 5,
+    'Rabbit': 3, 'Fish (Tilapia)': 10, 'Goat / Sheep': 5,
+  },
+  'ing_4': { // Fish meal - biogenic amines
+    'Poultry (Broiler)': 8, 'Poultry (Layer)': 4, 'Poultry (Kienyeji)': 6,
+    'Swine': 8, 'Dairy Cattle': 5, 'Beef Cattle': 8,
+    'Rabbit': 5, 'Fish (Tilapia)': 15, 'Goat / Sheep': 5,
+  },
+};
+
+// Returns an object { ingredientId: maxPct } for a given species,
+// using ANF defaults. Used to pre-populate new animal requirements.
+export function getDefaultOverridesForSpecies(species) {
+  const out = {};
+  for (const ingId of Object.keys(ANF_DEFAULTS)) {
+    const cap = ANF_DEFAULTS[ingId][species];
+    if (cap !== undefined) out[ingId] = cap;
+  }
+  return out;
+}
+
+// Resolve effective max inclusion considering: ingredient's own maxIncl,
+// requirement's per-ingredient overrides, then ANF defaults as last resort.
+// Pass the requirement record (which may carry inclusionOverrides). The
+// species fallback uses ANF_DEFAULTS so the rules apply even if the user
+// hasn't customised their nutritional reqs.
+export function resolveMaxIncl(ing, req, species) {
+  const ingCap = (ing && ing.maxIncl != null) ? Number(ing.maxIncl) : 100;
+  let stageCap = 100;
+  if (req && req.inclusionOverrides && req.inclusionOverrides[ing.id] != null) {
+    stageCap = Number(req.inclusionOverrides[ing.id]);
+  } else if (ANF_DEFAULTS[ing.id] && species && ANF_DEFAULTS[ing.id][species] != null) {
+    stageCap = ANF_DEFAULTS[ing.id][species];
+  }
+  return Math.max(0, Math.min(ingCap, stageCap, 100));
+}

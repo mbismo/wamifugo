@@ -6,7 +6,8 @@ import { C, uid, today, dateRange, fmt, fmtKES, exportToExcel, readExcelFile } f
 import {
   SEED_USERS, SEED_ANIMAL_REQS, SEED_INGREDIENT_PROFILES,
   CATEGORY_META, CATEGORY_ICONS, FEEDING_QTY, TIPS, SPECIES_RECS,
-  getAnimalReqs, getAnimalCategories, buildSpeciesList, getStagesForCategory, getReqForStage
+  getAnimalReqs, getAnimalCategories, buildSpeciesList, getStagesForCategory, getReqForStage,
+  ANF_DEFAULTS, getDefaultOverridesForSpecies, resolveMaxIncl
 } from "./constants.js";
 import { solveLeastCost, solveLeastCostLP, solveBestEffort, suggestIngredientsToBuy, assessNutrientGaps, calcNutrients, calcCost } from "./solver.js";
 
@@ -51,126 +52,55 @@ const NAV = [
   { key: 'users', icon: '\u{1F464}', label: 'Users', admin: true },
 ];
 
-// Anti-nutritive factor limits - abbreviated for brevity in this rewrite
-// Full reference: NRC 2012, ILRI Feed Composition Tables
-const ANTI_NUTRITIVE_FACTORS = {
-  'ing_6': { // Cottonseed cake - Gossypol
-    factor: 'Gossypol',
-    limits: {
-      'Poultry (Broiler)': { maxPct: 8, warning: 6, note: 'Free gossypol limit. Causes yolk discolouration in layers.' },
-      'Poultry (Layer)': { maxPct: 5, warning: 3, note: 'Causes olive egg yolk discolouration.' },
-      'Poultry (Kienyeji)': { maxPct: 8, warning: 6, note: 'Monitor yolk colour.' },
-      'Swine': { maxPct: 10, warning: 8, note: 'Reproductive failure in boars above 100mg/kg.' },
-      'Dairy Cattle': { maxPct: 20, warning: 15, note: 'Ruminants detoxify gossypol.' },
-      'Beef Cattle': { maxPct: 20, warning: 15, note: 'Young calves more sensitive.' },
-      'Rabbit': { maxPct: 10, warning: 7, note: 'Monitor reproduction.' },
-      'Fish (Tilapia)': { maxPct: 5, warning: 3, note: 'Reduces growth and damages liver.' },
-      'Goat / Sheep': { maxPct: 15, warning: 12, note: 'Similar to cattle.' },
-    }
-  },
-  'ing_14': { // Cassava - HCN
-    factor: 'Hydrocyanic Acid',
-    limits: {
-      'Poultry (Broiler)': { maxPct: 15, warning: 10, note: 'Properly dried cassava is safer.' },
-      'Poultry (Layer)': { maxPct: 10, warning: 7, note: 'Can reduce egg production.' },
-      'Poultry (Kienyeji)': { maxPct: 15, warning: 10, note: '' },
-      'Swine': { maxPct: 20, warning: 15, note: 'Limit in young piglets.' },
-      'Dairy Cattle': { maxPct: 30, warning: 25, note: 'Rumen detox handles HCN well.' },
-      'Beef Cattle': { maxPct: 30, warning: 25, note: '' },
-      'Rabbit': { maxPct: 15, warning: 10, note: 'Use only well-dried cassava.' },
-      'Fish (Tilapia)': { maxPct: 10, warning: 7, note: 'HCN toxic to fish.' },
-      'Goat / Sheep': { maxPct: 30, warning: 25, note: '' },
-    }
-  },
-  'ing_18': { // Urea
-    factor: 'Non-Protein Nitrogen',
-    limits: {
-      'Poultry (Broiler)': { maxPct: 0, warning: 0, note: 'EXCLUDED: Poultry cannot utilise NPN.' },
-      'Poultry (Layer)': { maxPct: 0, warning: 0, note: 'EXCLUDED: Toxic to poultry.' },
-      'Poultry (Kienyeji)': { maxPct: 0, warning: 0, note: 'EXCLUDED.' },
-      'Swine': { maxPct: 0, warning: 0, note: 'EXCLUDED: Pigs cannot utilise NPN.' },
-      'Dairy Cattle': { maxPct: 1, warning: 0.8, note: 'Max 1% of DM. Introduce gradually.' },
-      'Beef Cattle': { maxPct: 1, warning: 0.8, note: 'Gradual introduction essential.' },
-      'Rabbit': { maxPct: 0, warning: 0, note: 'EXCLUDED.' },
-      'Fish (Tilapia)': { maxPct: 0, warning: 0, note: 'EXCLUDED: Toxic to fish.' },
-      'Goat / Sheep': { maxPct: 1, warning: 0.8, note: 'Same as cattle.' },
-    }
-  },
-  'ing_13': { // Sorghum - tannins
-    factor: 'Condensed Tannins',
-    limits: {
-      'Poultry (Broiler)': { maxPct: 20, warning: 15, note: 'Use low-tannin varieties.' },
-      'Poultry (Layer)': { maxPct: 15, warning: 10, note: 'Reduces egg production.' },
-      'Poultry (Kienyeji)': { maxPct: 20, warning: 15, note: '' },
-      'Swine': { maxPct: 30, warning: 25, note: 'Better tolerance than poultry.' },
-      'Dairy Cattle': { maxPct: 40, warning: 35, note: 'Ruminants tolerate well.' },
-      'Beef Cattle': { maxPct: 40, warning: 35, note: '' },
-      'Rabbit': { maxPct: 20, warning: 15, note: '' },
-      'Fish (Tilapia)': { maxPct: 15, warning: 10, note: '' },
-      'Goat / Sheep': { maxPct: 40, warning: 30, note: '' },
-    }
-  },
-  'ing_17': { // Blood meal
-    factor: 'Amino Acid Imbalance',
-    limits: {
-      'Poultry (Broiler)': { maxPct: 4, warning: 3, note: 'Isoleucine deficiency above 3%.' },
-      'Poultry (Layer)': { maxPct: 3, warning: 2, note: 'Poor palatability.' },
-      'Poultry (Kienyeji)': { maxPct: 4, warning: 3, note: '' },
-      'Swine': { maxPct: 5, warning: 4, note: 'Palatability issues.' },
-      'Dairy Cattle': { maxPct: 5, warning: 4, note: 'Good bypass protein.' },
-      'Beef Cattle': { maxPct: 5, warning: 4, note: '' },
-      'Rabbit': { maxPct: 3, warning: 2, note: 'Poor palatability limit.' },
-      'Fish (Tilapia)': { maxPct: 10, warning: 7, note: 'Fish accept it better.' },
-      'Goat / Sheep': { maxPct: 5, warning: 4, note: '' },
-    }
-  },
-  'ing_4': { // Fish meal
-    factor: 'Biogenic Amines',
-    limits: {
-      'Poultry (Broiler)': { maxPct: 8, warning: 6, note: 'Can cause fishy taint in meat.' },
-      'Poultry (Layer)': { maxPct: 4, warning: 3, note: 'CRITICAL: Above 4% causes egg taint.' },
-      'Poultry (Kienyeji)': { maxPct: 6, warning: 4, note: 'Taint risk in eggs.' },
-      'Swine': { maxPct: 8, warning: 6, note: 'Withdraw 2 weeks before slaughter.' },
-      'Dairy Cattle': { maxPct: 5, warning: 3, note: 'Can cause fishy milk taint.' },
-      'Beef Cattle': { maxPct: 8, warning: 6, note: '' },
-      'Rabbit': { maxPct: 5, warning: 3, note: '' },
-      'Fish (Tilapia)': { maxPct: 15, warning: 10, note: '' },
-      'Goat / Sheep': { maxPct: 5, warning: 3, note: '' },
-    }
-  },
+// Anti-nutritive factor metadata (just labels for warning messages).
+// Numeric caps now live in ANF_DEFAULTS in constants.js, plus per-stage
+// overrides on each requirement record.
+const ANF_FACTOR_LABELS = {
+  'ing_6':  'Gossypol',
+  'ing_14': 'Hydrocyanic Acid',
+  'ing_18': 'Non-Protein Nitrogen',
+  'ing_13': 'Condensed Tannins',
+  'ing_17': 'Amino Acid Imbalance',
+  'ing_4':  'Biogenic Amines',
 };
 
-function getANFLimit(ingId, species) {
-  const anf = ANTI_NUTRITIVE_FACTORS[ingId];
-  if (!anf) return null;
-  const limit = anf.limits[species];
-  if (!limit) return null;
-  return Object.assign({}, anf, limit);
+// Resolve effective max inclusion using requirement-level overrides
+// (with ANF defaults as fall-back when no override is set).
+function getEffectiveMaxIncl(ing, species, req) {
+  return resolveMaxIncl(ing, req, species);
 }
 
-function getEffectiveMaxIncl(ing, species) {
-  const base = ing.maxIncl !== undefined ? ing.maxIncl : 100;
-  const anf = getANFLimit(ing.id, species);
-  if (!anf) return base;
-  if (anf.maxPct === 0) return 0;
-  return Math.min(base, anf.maxPct);
-}
-
-function checkANFWarnings(formula, ingredients, species) {
+function checkANFWarnings(formula, ingredients, species, req) {
   const warnings = [];
   const exclusions = [];
   Object.entries(formula).forEach(function(entry) {
     const id = entry[0], pct = entry[1];
-    const anf = getANFLimit(id, species);
-    if (!anf) return;
     const ing = ingredients.find(function(i) { return i.id === id; });
     if (!ing) return;
-    if (anf.maxPct === 0) {
-      exclusions.push({ ingredient: ing.name, factor: anf.factor, note: anf.note });
-    } else if (pct > anf.maxPct) {
-      warnings.push({ ingredient: ing.name, factor: anf.factor, current: pct.toFixed(1), maxPct: anf.maxPct, note: anf.note, severity: 'danger' });
-    } else if (pct > anf.warning) {
-      warnings.push({ ingredient: ing.name, factor: anf.factor, current: pct.toFixed(1), maxPct: anf.maxPct, note: anf.note, severity: 'warning' });
+    const maxPct = resolveMaxIncl(ing, req, species);
+    const factor = ANF_FACTOR_LABELS[id];
+    // Custom note from ingredient's antiNote field, if any
+    const note = (ing.antiNote || '').trim();
+    if (maxPct === 0) {
+      exclusions.push({ ingredient: ing.name, factor: factor || 'Excluded', note: note || 'Not allowed for this species/stage.' });
+    } else if (maxPct < 100 && pct > maxPct) {
+      warnings.push({
+        ingredient: ing.name,
+        factor: factor || 'Inclusion Limit',
+        current: pct.toFixed(1),
+        maxPct: maxPct,
+        note: note,
+        severity: 'danger'
+      });
+    } else if (maxPct < 100 && pct > maxPct * 0.85) {
+      warnings.push({
+        ingredient: ing.name,
+        factor: factor || 'Inclusion Limit',
+        current: pct.toFixed(1),
+        maxPct: maxPct,
+        note: note,
+        severity: 'warning'
+      });
     }
   });
   return { warnings: warnings, exclusions: exclusions };
@@ -1181,7 +1111,7 @@ function IngredientsPage() {
   const [toast, setToast] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [importStatus, setImportStatus] = useState(null);
-  const blank = { name: '', category: 'energy', cp: '', me: '', fat: '', fibre: '', ca: '', p: '', lys: '', met: '', nutritiveNote: '', antiNote: '' };
+  const blank = { name: '', category: 'energy', cp: '', me: '', fat: '', fibre: '', ca: '', p: '', lys: '', met: '', maxIncl: '', nutritiveNote: '', antiNote: '' };
   const [form, setForm] = useState(blank);
 
   function showT(msg, type) {
@@ -1233,6 +1163,11 @@ function IngredientsPage() {
           p: parseFloat(get(['p', 'phosphorus', 'ppercent'])) || 0,
           lys: parseFloat(get(['lys', 'lysine'])) || 0,
           met: parseFloat(get(['met', 'methionine'])) || 0,
+          maxIncl: (function() {
+            const v = get(['maxincl', 'maxinclusion', 'maxincusionpercent', 'max', 'maxpercent', 'cap']);
+            const n = parseFloat(v);
+            return isNaN(n) ? 100 : Math.min(100, Math.max(0, n));
+          })(),
           nutritiveNote: String(get(['nutritivenote', 'nutritivenotes', 'nutritive', 'benefits', 'notes']) || '').trim(),
           antiNote: String(get(['antinote', 'antinutritivenote', 'antinutritivenotes', 'antinutritive', 'cautions', 'warnings']) || '').trim()
         });
@@ -1267,12 +1202,12 @@ function IngredientsPage() {
   }
 
   function downloadTemplate() {
-    const headers = ['Name', 'Category', 'CP %', 'ME kcal/kg', 'Fat %', 'Fibre %', 'Ca %', 'P %', 'Lys %', 'Met %', 'Nutritive Note', 'Anti Note'];
+    const headers = ['Name', 'Category', 'CP %', 'ME kcal/kg', 'Fat %', 'Fibre %', 'Ca %', 'P %', 'Lys %', 'Met %', 'Max Inclusion %', 'Nutritive Note', 'Anti Note'];
     const sample = [
-      ['Maize Grain', 'energy', 8.5, 3350, 3.8, 2.3, 0.02, 0.28, 0.24, 0.17,
+      ['Maize Grain', 'energy', 8.5, 3350, 3.8, 2.3, 0.02, 0.28, 0.24, 0.17, 70,
         'High-energy staple. Excellent palatability. Yellow varieties supply xanthophyll for egg yolk colour.',
         'Susceptible to aflatoxin if poorly stored. Reject mouldy or musty grain. Limit to 70% in poultry mash.'],
-      ['Soybean Meal (44%)', 'protein', 44, 2230, 1.5, 6.5, 0.33, 0.65, 2.78, 0.64,
+      ['Soybean Meal (44%)', 'protein', 44, 2230, 1.5, 6.5, 0.33, 0.65, 2.78, 0.64, 35,
         'Highest-quality plant protein. Excellent amino acid profile, especially lysine. Standard pairing with maize.',
         'Raw soy contains trypsin inhibitors and must be heat-treated (toasted). Limit to 35% to avoid excess Lys/Met imbalance.']
     ];
@@ -1291,6 +1226,7 @@ function IngredientsPage() {
       p: parseFloat(form.p) || 0,
       lys: parseFloat(form.lys) || 0,
       met: parseFloat(form.met) || 0,
+      maxIncl: form.maxIncl === '' || form.maxIncl == null ? 100 : Math.min(100, Math.max(0, parseFloat(form.maxIncl) || 0)),
       nutritiveNote: (form.nutritiveNote || '').trim(),
       antiNote: (form.antiNote || '').trim(),
     });
@@ -1326,6 +1262,11 @@ function IngredientsPage() {
     { key: 'me', label: 'ME kcal/kg' },
     { key: 'ca', label: 'Ca %' },
     { key: 'p', label: 'P %' },
+    { key: 'maxIncl', label: 'Max %', render: function(r) {
+      const v = r.maxIncl != null ? r.maxIncl : 100;
+      return h('span', { style: { fontFamily: "'DM Mono',monospace", color: v < 100 ? C.warning : C.muted } },
+        v < 100 ? v + '%' : '100%');
+    }},
     { key: 'price', label: 'Sell Price/kg', render: function(r) {
       const sp = getSellPrice(r.id);
       return h('span', { style: { fontFamily: "'DM Mono',monospace", color: C.grass, fontWeight: 700 } },
@@ -1388,6 +1329,16 @@ function IngredientsPage() {
       h(Inp, { label: 'Lys %', value: form.lys, onChange: function(v) { setForm(Object.assign({}, form, { lys: v })); }, type: 'number' }),
       h(Inp, { label: 'Met %', value: form.met, onChange: function(v) { setForm(Object.assign({}, form, { met: v })); }, type: 'number' })
     ),
+    h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 16 } }, 'Inclusion Limits'),
+    h(Inp, {
+      label: 'Max Inclusion % (default 100)',
+      value: form.maxIncl,
+      onChange: function(v) { setForm(Object.assign({}, form, { maxIncl: v })); },
+      type: 'number',
+      placeholder: 'e.g. 25 for cottonseed cake; 100 if no cap'
+    }),
+    h('div', { style: { fontSize: 11, color: C.muted, marginTop: -8, marginBottom: 12, fontStyle: 'italic' } },
+      'The solver will not exceed this percentage of the total mix for this ingredient.'),
     h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 16 } }, 'Notes'),
     h(Inp, {
       label: '\u{1F33F} Nutritive Notes',
@@ -1421,7 +1372,7 @@ function IngredientsPage() {
     },
       h('div', { style: { fontWeight: 700, marginBottom: 6 } }, 'Expected column headers:'),
       h('div', { style: { fontFamily: "'DM Mono',monospace", fontSize: 11 } },
-        'Name, Category, CP %, ME kcal/kg, Fat %, Fibre %, Ca %, P %, Lys %, Met %, Nutritive Note, Anti Note'),
+        'Name, Category, CP %, ME kcal/kg, Fat %, Fibre %, Ca %, P %, Lys %, Met %, Max Inclusion %, Nutritive Note, Anti Note'),
       h('div', { style: { marginTop: 8, fontSize: 12 } },
         'Categories: energy, protein, macromineral, micromineral, roughage, additive. ',
         'Existing ingredients with matching names will be updated.')
@@ -1626,10 +1577,11 @@ function FormulatorPage(props) {
   }
 
   function getActiveWithANF() {
+    const currentReq = (species && stage) ? getReqForStage(animalReqs, species, stage) : null;
     return ingredients.filter(function(i) { return selIngrs.has(i.id); }).map(function(i) {
       const base = Object.assign({}, i, { price: getSellPriceForIng(i) });
       if (species) {
-        const effMax = getEffectiveMaxIncl(base, species);
+        const effMax = getEffectiveMaxIncl(base, species, currentReq);
         if (effMax === 0) return null;
         return Object.assign({}, base, { maxIncl: Math.min(base.maxIncl || 100, effMax) });
       }
@@ -1693,7 +1645,7 @@ function FormulatorPage(props) {
         setNutrients(n);
         setCostPKg(c);
         setSolveQuality('optimal');
-        const anfResult = checkANFWarnings(result.formula, ingrs, species);
+        const anfResult = checkANFWarnings(result.formula, ingrs, species, req);
         setAnfWarnings(anfResult.warnings);
         setAnfExclusions(anfResult.exclusions);
         setBuySuggestions([]);
@@ -1739,7 +1691,7 @@ function FormulatorPage(props) {
         setNutrients(n);
         setCostPKg(c);
         setSolveQuality('optimal');
-        const anfResult = checkANFWarnings(result.formula, ingrs, species);
+        const anfResult = checkANFWarnings(result.formula, ingrs, species, req);
         setAnfWarnings(anfResult.warnings);
         setAnfExclusions(anfResult.exclusions);
         setBuySuggestions([]);
@@ -3204,6 +3156,8 @@ function EducationPage() {
 // ========== NUTRITION PAGE (Admin) ==========
 
 function NutritionPage() {
+  const ctx = useContext(Ctx);
+  const ingredients = ctx.ingredients || [];
   const [reqs, setReqs] = useState(function() { return getAnimalReqs(db.get('animalReqs')); });
   const [showForm, setShowForm] = useState(false);
   const [editReq, setEditReq] = useState(null);
@@ -3214,7 +3168,8 @@ function NutritionPage() {
   const blank = {
     category: '', stage: '',
     cp: [0, 0], me: [0, 0], fat: [0, 0], fibre: [0, 0],
-    ca: [0, 0], p: [0, 0], lys: [0, 0], met: [0, 0]
+    ca: [0, 0], p: [0, 0], lys: [0, 0], met: [0, 0],
+    inclusionOverrides: {}
   };
   const [form, setForm] = useState(blank);
 
@@ -3224,8 +3179,50 @@ function NutritionPage() {
     serverPush('animalReqs', newReqs);
   }
 
-  function openAdd() { setForm(blank); setEditReq(null); setShowForm(true); }
-  function openEdit(r) { setForm(Object.assign({}, r)); setEditReq(r); setShowForm(true); }
+  function openAdd() {
+    // Start with blank but no overrides until species is chosen — populated below
+    setForm(Object.assign({}, blank, { inclusionOverrides: {} }));
+    setEditReq(null);
+    setShowForm(true);
+  }
+  function openEdit(r) {
+    // Preserve existing overrides; if none, populate from ANF defaults so user can see/edit them
+    const existing = r.inclusionOverrides && Object.keys(r.inclusionOverrides).length > 0
+      ? r.inclusionOverrides
+      : getDefaultOverridesForSpecies(r.category);
+    setForm(Object.assign({}, r, { inclusionOverrides: Object.assign({}, existing) }));
+    setEditReq(r);
+    setShowForm(true);
+  }
+
+  // When the species changes on a NEW requirement form, auto-populate overrides
+  function handleSpeciesChange(newCat) {
+    setForm(function(prev) {
+      const next = Object.assign({}, prev, { category: newCat });
+      // Only auto-populate if user is creating new (no editReq) AND overrides are empty
+      if (!editReq && (!prev.inclusionOverrides || Object.keys(prev.inclusionOverrides).length === 0)) {
+        next.inclusionOverrides = getDefaultOverridesForSpecies(newCat);
+      }
+      return next;
+    });
+  }
+
+  function setOverride(ingId, val) {
+    const cur = Object.assign({}, form.inclusionOverrides || {});
+    if (val === '' || val == null) {
+      delete cur[ingId];
+    } else {
+      const n = parseFloat(val);
+      if (!isNaN(n)) cur[ingId] = Math.max(0, Math.min(100, n));
+    }
+    setForm(Object.assign({}, form, { inclusionOverrides: cur }));
+  }
+
+  function removeOverride(ingId) {
+    const cur = Object.assign({}, form.inclusionOverrides || {});
+    delete cur[ingId];
+    setForm(Object.assign({}, form, { inclusionOverrides: cur }));
+  }
 
   function saveReq() {
     if (!form.category || !form.stage) return;
@@ -3366,13 +3363,14 @@ function NutritionPage() {
   const formModal = showForm ? h(Modal, {
     title: editReq ? 'Edit Requirement' : 'Add Animal Requirement',
     onClose: function() { setShowForm(false); setEditReq(null); },
-    width: 560
+    width: 640
   },
     h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
-      h(Inp, { label: 'Category', value: form.category, onChange: function(v) { setForm(Object.assign({}, form, { category: v })); }, placeholder: 'e.g. Poultry (Broiler)' }),
+      h(Inp, { label: 'Category', value: form.category, onChange: handleSpeciesChange, placeholder: 'e.g. Poultry (Broiler)' }),
       h(Inp, { label: 'Stage', value: form.stage, onChange: function(v) { setForm(Object.assign({}, form, { stage: v })); }, placeholder: 'e.g. Starter (0-21 days)' })
     ),
-    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginTop: 10 } },
+    h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 16 } }, 'Nutrient Targets (min-max)'),
+    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 } },
       rangeField('cp', 'CP % (min-max)'),
       rangeField('me', 'ME kcal/kg'),
       rangeField('fat', 'Fat %'),
@@ -3382,6 +3380,63 @@ function NutritionPage() {
       rangeField('lys', 'Lys %'),
       rangeField('met', 'Met %')
     ),
+    // Inclusion overrides editor
+    (function() {
+      const overrides = form.inclusionOverrides || {};
+      const overrideEntries = Object.entries(overrides);
+      // Available ingredients to add: those with an antiNote (likely ANF) OR not already in overrides
+      const usedIds = new Set(Object.keys(overrides));
+      const candidates = ingredients.filter(function(i) { return !usedIds.has(i.id); });
+      return h('div', null,
+        h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 16 } }, 'Ingredient Inclusion Overrides'),
+        h('div', { style: { fontSize: 11, color: C.muted, fontStyle: 'italic', marginBottom: 8 } },
+          'Maximum % of mix this stage may contain of each ingredient. Use 0 to exclude entirely. Leave blank to use the ingredient\'s default cap.'),
+        overrideEntries.length === 0 ? h('div', {
+          style: { padding: 16, background: C.cream, borderRadius: 8, fontSize: 12, color: C.muted, textAlign: 'center' }
+        }, 'No overrides set. Defaults from anti-nutritive references will apply automatically.') : null,
+        overrideEntries.map(function(entry) {
+          const id = entry[0];
+          const cap = entry[1];
+          const ing = ingredients.find(function(x) { return x.id === id; });
+          const name = ing ? ing.name : id;
+          return h('div', {
+            key: id,
+            style: { display: 'grid', gridTemplateColumns: '1fr 90px 30px', gap: 8, alignItems: 'center', marginBottom: 6, padding: '6px 10px', background: C.cream, borderRadius: 8 }
+          },
+            h('div', { style: { fontSize: 13, color: C.earth } }, name),
+            h('input', {
+              type: 'number',
+              value: cap,
+              min: 0,
+              max: 100,
+              onChange: function(e) { setOverride(id, e.target.value); },
+              style: { padding: '6px 9px', border: '1px solid ' + C.border, borderRadius: 6, fontSize: 12, width: '100%', fontFamily: "'DM Mono',monospace", textAlign: 'right', background: 'white' }
+            }),
+            h('button', {
+              onClick: function() { removeOverride(id); },
+              style: { padding: '4px 7px', border: 'none', background: 'transparent', color: C.danger, cursor: 'pointer', fontSize: 14 },
+              title: 'Remove override'
+            }, '\u2715')
+          );
+        }),
+        candidates.length > 0 ? h('div', {
+          style: { display: 'grid', gridTemplateColumns: '1fr 90px 30px', gap: 8, alignItems: 'center', marginTop: 8 }
+        },
+          h(Sel, {
+            value: '',
+            onChange: function(v) {
+              if (v) setOverride(v, 100);
+            },
+            options: [{ value: '', label: '+ Add ingredient override...' }].concat(
+              candidates.map(function(i) { return { value: i.id, label: i.name }; })
+            ),
+            style: { marginBottom: 0 }
+          }),
+          h('div'),
+          h('div')
+        ) : null
+      );
+    })(),
     h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
       h(Btn, { onClick: function() { setShowForm(false); setEditReq(null); }, variant: 'secondary' }, 'Cancel'),
       h(Btn, { onClick: saveReq, variant: 'success', disabled: !form.category || !form.stage },
@@ -3396,7 +3451,20 @@ function NutritionPage() {
     { key: 'me', label: 'ME', render: function(r) { return r.me[0] + '-' + r.me[1]; } },
     { key: 'ca', label: 'Ca %', render: function(r) { return r.ca[0] + '-' + r.ca[1]; } },
     { key: 'p', label: 'P %', render: function(r) { return r.p[0] + '-' + r.p[1]; } },
-    { key: 'actions', label: '', render: function(r) {
+    { key: 'overrides', label: 'Caps', sortable: false, render: function(r) {
+      const n = r.inclusionOverrides ? Object.keys(r.inclusionOverrides).length : 0;
+      if (n === 0) return h('span', { style: { color: C.muted, fontSize: 11 } }, '-');
+      return h('span', {
+        style: {
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          padding: '2px 8px', background: '#fff4e0', color: C.warning,
+          border: '1px solid ' + C.warning + '66', borderRadius: 12,
+          fontSize: 11, fontWeight: 600
+        },
+        title: 'Custom inclusion caps for ' + n + ' ingredient(s)'
+      }, n + ' \u{1F510}');
+    }},
+    { key: 'actions', label: '', sortable: false, render: function(r) {
       return h('div', { style: { display: 'flex', gap: 4 } },
         h(Btn, { size: 'sm', variant: 'secondary', onClick: function() { openEdit(r); } }, 'Edit'),
         h(Btn, { size: 'sm', variant: 'danger', onClick: function() { delReq(r); } }, 'Del')
