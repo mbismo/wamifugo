@@ -34,6 +34,124 @@ async function serverPush(col, data) {
   }
 }
 
+// ── LOT TRACKING HELPERS ──────────────────────────────────────────────────────
+// Inventory items now hold a `lots` array. Each lot:
+//   { lotId, purchaseDate, supplier, originalQty, remainingQty, costPerKg, ts }
+// The row-level qty/lastPrice fields are kept as a derived snapshot for legacy
+// code that still reads them. Migration helper lives in utils.js.
+
+// Sort lots in FIFO order (oldest purchaseDate first; tie-break on ts)
+function sortedLotsFIFO(lots) {
+  return (lots || []).slice().sort(function(a, b) {
+    if (a.purchaseDate !== b.purchaseDate) {
+      return a.purchaseDate < b.purchaseDate ? -1 : 1;
+    }
+    return (a.ts || 0) - (b.ts || 0);
+  });
+}
+
+// Consume `qty` kg from an inventory row's lots in FIFO order
+// (or in the explicit order given by `lotOrderIds`, an array of lotIds).
+// If the manual order doesn't cover the full qty, the rest is consumed FIFO
+// from the remaining lots not already in the order.
+// Returns { newLots, consumed: [{lotId, qty, costPerKg}], totalCost, shortfall }
+function consumeFromLots(invRow, qty, lotOrderIds) {
+  const lots = (invRow && invRow.lots) ? invRow.lots.slice() : [];
+  let ordered;
+  if (lotOrderIds && lotOrderIds.length) {
+    const explicit = lotOrderIds.map(function(id) { return lots.find(function(l) { return l.lotId === id; }); }).filter(Boolean);
+    const explicitIds = new Set(explicit.map(function(l) { return l.lotId; }));
+    const fallthrough = sortedLotsFIFO(lots.filter(function(l) { return !explicitIds.has(l.lotId); }));
+    ordered = explicit.concat(fallthrough);
+  } else {
+    ordered = sortedLotsFIFO(lots);
+  }
+  let remaining = qty;
+  const consumed = [];
+  let totalCost = 0;
+  const updates = {};
+  for (const lot of ordered) {
+    if (remaining <= 1e-9) break;
+    const take = Math.min(lot.remainingQty, remaining);
+    if (take <= 0) continue;
+    consumed.push({ lotId: lot.lotId, qty: take, costPerKg: lot.costPerKg, purchaseDate: lot.purchaseDate });
+    totalCost += take * lot.costPerKg;
+    updates[lot.lotId] = Object.assign({}, lot, { remainingQty: lot.remainingQty - take });
+    remaining -= take;
+  }
+  const newLots = lots.map(function(l) { return updates[l.lotId] || l; })
+    .filter(function(l) { return l.remainingQty > 1e-6; });
+  return {
+    newLots: newLots,
+    consumed: consumed,
+    totalCost: Math.round(totalCost * 100) / 100,
+    shortfall: Math.max(0, remaining)
+  };
+}
+
+// Estimated cost-per-kg if qty were consumed FIFO right now (no mutation)
+function estimateLotCostFIFO(invRow, qty) {
+  const r = consumeFromLots(invRow, qty);
+  return r.consumed.length > 0 && qty > 0 ? r.totalCost / qty : 0;
+}
+
+// Returns the qty available across all lots (or just one specific lot)
+function availableQty(invRow, lotId) {
+  if (!invRow || !invRow.lots) return 0;
+  if (lotId) {
+    const lot = invRow.lots.find(function(l) { return l.lotId === lotId; });
+    return lot ? lot.remainingQty : 0;
+  }
+  return invRow.lots.reduce(function(s, l) { return s + (l.remainingQty || 0); }, 0);
+}
+
+// Add a new lot to an inventory row (creates row if needed)
+function addLotToInventory(inventory, ingredientId, ingredientName, ingredientCategory, lot) {
+  const existingIdx = inventory.findIndex(function(i) { return i.id === ingredientId; });
+  if (existingIdx >= 0) {
+    return inventory.map(function(row, idx) {
+      if (idx !== existingIdx) return row;
+      const newLots = (row.lots || []).concat([lot]);
+      const newQty = newLots.reduce(function(s, l) { return s + l.remainingQty; }, 0);
+      // Update lastPrice as a snapshot of the most recent purchase (legacy compat)
+      return Object.assign({}, row, {
+        lots: newLots,
+        qty: newQty,
+        lastPrice: lot.costPerKg
+      });
+    });
+  }
+  // New row entirely
+  return inventory.concat([{
+    id: ingredientId,
+    name: ingredientName,
+    category: ingredientCategory || 'energy',
+    unit: 'kg',
+    qty: lot.originalQty,
+    lastPrice: lot.costPerKg,
+    sellPrice: Math.round(lot.costPerKg * 1.20 * 100) / 100,
+    margin: 20,
+    lots: [lot]
+  }]);
+}
+
+// Apply a list of consumptions to inventory and return new inventory
+// consumptions: [{ itemId, newLots }]
+function applyLotConsumptions(inventory, consumptions) {
+  const byId = {};
+  consumptions.forEach(function(c) { byId[c.itemId] = c; });
+  return inventory.map(function(row) {
+    const c = byId[row.id];
+    if (!c) return row;
+    const totalQty = c.newLots.reduce(function(s, l) { return s + l.remainingQty; }, 0);
+    return Object.assign({}, row, {
+      lots: c.newLots,
+      qty: totalQty
+    });
+  });
+}
+
+
 // Navigation config
 const NAV = [
   { key: 'dashboard', icon: '\u{1F4CA}', label: 'Dashboard' },
@@ -853,6 +971,7 @@ function InventoryPage() {
   const user = ctx.user;
 
   const [showAdd, setShowAdd] = useState(false);
+  const [showLots, setShowLots] = useState(null); // inventory row when open
   const [ns, setNs] = useState({ itemId: '', qty: '', costPerKg: '', date: today(), supplier: '' });
   const [showPriceEdit, setShowPriceEdit] = useState(null);
   const [priceMode, setPriceMode] = useState('margin');
@@ -885,43 +1004,37 @@ function InventoryPage() {
     const qty = parseFloat(ns.qty);
     const cost = parseFloat(ns.costPerKg);
     const ingDef = ingredients.find(function(i) { return i.id === ns.itemId; });
-    const existingInv = inventory.find(function(i) { return i.id === ns.itemId; });
-
-    let newInv;
-    if (existingInv) {
-      newInv = inventory.map(function(i) {
-        if (i.id !== ns.itemId) return i;
-        const sp = i.sellPriceDirect || Math.round(cost * (1 + (i.margin || 20) / 100) * 100) / 100;
-        return Object.assign({}, i, { qty: i.qty + qty, lastPrice: cost, sellPrice: sp });
-      });
-    } else {
-      // First time stocking this ingredient — create the inventory row
-      const sp = Math.round(cost * 1.20 * 100) / 100; // default 20% margin
-      const newRow = {
-        id: ns.itemId,
-        name: ingDef ? ingDef.name : '(unknown)',
-        category: ingDef ? ingDef.category : 'energy',
-        unit: 'kg',
-        qty: qty,
-        lastPrice: cost,
-        sellPrice: sp,
-        margin: 20
-      };
-      newInv = inventory.concat([newRow]);
-    }
+    const newLot = {
+      lotId: 'lot_' + uid(),
+      purchaseDate: ns.date,
+      supplier: ns.supplier || '',
+      originalQty: qty,
+      remainingQty: qty,
+      costPerKg: cost,
+      ts: Date.now()
+    };
+    const newInv = addLotToInventory(
+      inventory,
+      ns.itemId,
+      ingDef ? ingDef.name : '(unknown)',
+      ingDef ? ingDef.category : 'energy',
+      newLot
+    );
     setInventory(newInv);
 
-    const itemName = ingDef ? ingDef.name : (existingInv ? existingInv.name : '');
+    const itemName = ingDef ? ingDef.name : '';
     setPurchases(purchases.concat([{
       id: uid(), itemId: ns.itemId, itemName: itemName,
-      qty: qty, costPerKg: cost, total: qty * cost, date: ns.date, supplier: ns.supplier
+      qty: qty, costPerKg: cost, total: qty * cost,
+      date: ns.date, supplier: ns.supplier,
+      lotId: newLot.lotId
     }]));
     const ledger = db.get('stockLedger', []);
     const entry = {
       id: uid(), type: 'PURCHASE', date: ns.date,
       itemId: ns.itemId, itemName: itemName,
       qty: qty, costPerKg: cost, total: qty * cost,
-      supplier: ns.supplier, by: user ? user.name : ''
+      supplier: ns.supplier, lotId: newLot.lotId, by: user ? user.name : ''
     };
     db.set('stockLedger', ledger.concat([entry]));
     serverPush('stockLedger', ledger.concat([entry]));
@@ -1030,6 +1143,102 @@ function InventoryPage() {
     )
   ) : null;
 
+  // Refresh showLots row data when inventory changes (so the open modal stays in sync)
+  const liveLotsRow = showLots ? inventory.find(function(i) { return i.id === showLots.id; }) : null;
+
+  function deleteLot(itemId, lotId) {
+    if (!window.confirm('Delete this lot? This cannot be undone.')) return;
+    const newInv = inventory.map(function(i) {
+      if (i.id !== itemId) return i;
+      const newLots = (i.lots || []).filter(function(l) { return l.lotId !== lotId; });
+      const newQty = newLots.reduce(function(s, l) { return s + l.remainingQty; }, 0);
+      return Object.assign({}, i, { lots: newLots, qty: newQty });
+    });
+    setInventory(newInv);
+    showT('Lot deleted');
+  }
+
+  const lotsModal = (showLots && liveLotsRow) ? h(Modal, {
+    title: 'Lots — ' + (liveLotsRow.name || ''),
+    onClose: function() { setShowLots(null); },
+    width: 640
+  },
+    h('div', { style: { fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.5 } },
+      'Each purchase creates a separate lot at its own price. Lots are consumed FIFO (oldest first) by default \u2014 sales can override this.'
+    ),
+    (liveLotsRow.lots || []).length === 0 ? h('div', {
+      style: { padding: 24, textAlign: 'center', color: C.muted, background: C.cream, borderRadius: 10 }
+    }, 'No lots yet. Add stock to create the first lot.') : h('div', null,
+      h('div', {
+        style: {
+          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 40px',
+          gap: 6, padding: '6px 0',
+          fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+          color: C.muted, fontFamily: "'DM Mono',monospace",
+          letterSpacing: 1.2, borderBottom: '2px solid ' + C.border
+        }
+      },
+        h('div', null, 'Date'),
+        h('div', null, 'Supplier'),
+        h('div', { style: { textAlign: 'right' } }, 'Original'),
+        h('div', { style: { textAlign: 'right' } }, 'Remaining'),
+        h('div', { style: { textAlign: 'right' } }, 'Cost/kg'),
+        h('div', null, '')
+      ),
+      sortedLotsFIFO(liveLotsRow.lots).map(function(lot, i) {
+        const used = lot.originalQty - lot.remainingQty;
+        const pctUsed = lot.originalQty > 0 ? (used / lot.originalQty) * 100 : 0;
+        return h('div', {
+          key: lot.lotId,
+          style: {
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 40px',
+            gap: 6, padding: '8px 0',
+            alignItems: 'center', fontSize: 12,
+            borderBottom: '1px solid ' + C.border,
+            background: i === 0 ? '#f0f9f4' : 'transparent'
+          }
+        },
+          h('div', { style: { color: C.earth, fontWeight: 600 } },
+            lot.purchaseDate,
+            i === 0 ? h('div', { style: { fontSize: 9, color: C.grass, fontWeight: 700 } }, 'NEXT TO USE') : null
+          ),
+          h('div', { style: { color: C.muted, fontSize: 11 } }, lot.supplier || '-'),
+          h('div', { style: { textAlign: 'right', fontFamily: "'DM Mono',monospace", color: C.muted } },
+            fmt(lot.originalQty, 1) + ' kg'),
+          h('div', { style: { textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 700, color: lot.remainingQty > 0 ? C.earth : C.muted } },
+            fmt(lot.remainingQty, 1) + ' kg' +
+              (pctUsed > 0 && pctUsed < 100 ? ' (' + Math.round(pctUsed) + '% used)' : '')),
+          h('div', { style: { textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 700, color: C.earth } },
+            fmtKES(lot.costPerKg)),
+          user && user.role === 'admin' ? h('button', {
+            onClick: function() { deleteLot(liveLotsRow.id, lot.lotId); },
+            style: { border: 'none', background: 'transparent', color: C.danger, cursor: 'pointer', fontSize: 14 },
+            title: 'Delete this lot'
+          }, '\u2715') : h('div')
+        );
+      }),
+      (function() {
+        const totalRemaining = liveLotsRow.lots.reduce(function(s, l) { return s + l.remainingQty; }, 0);
+        const totalValue = liveLotsRow.lots.reduce(function(s, l) { return s + l.remainingQty * l.costPerKg; }, 0);
+        const wAvg = totalRemaining > 0 ? totalValue / totalRemaining : 0;
+        return h('div', {
+          style: {
+            marginTop: 12, padding: '10px 12px',
+            background: C.parchment, borderRadius: 8,
+            display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.earth
+          }
+        },
+          h('span', null, h('strong', null, 'Total remaining: '), fmt(totalRemaining, 1) + ' kg'),
+          h('span', null, h('strong', null, 'Stock value: '), fmtKES(totalValue)),
+          h('span', null, h('strong', null, 'Wtd avg: '), fmtKES(wAvg) + '/kg')
+        );
+      })()
+    ),
+    h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
+      h(Btn, { onClick: function() { setShowLots(null); }, variant: 'secondary' }, 'Close')
+    )
+  ) : null;
+
   const addModal = showAdd ? h(Modal, {
     title: 'Add Stock',
     onClose: function() { setShowAdd(false); },
@@ -1073,16 +1282,28 @@ function InventoryPage() {
         style: { fontFamily: "'DM Mono',monospace", fontWeight: 700, color: r.qty <= (r.reorderLevel || 0) ? C.danger : C.grass }
       }, fmt(r.qty) + ' kg');
     }},
-    { key: 'lastPrice', label: 'Buy Price', render: function(r) { return fmtKES(r.lastPrice || 0) + '/kg'; } },
+    { key: 'lots', label: 'Lots', render: function(r) {
+      const n = (r.lots || []).length;
+      if (n === 0) return h('span', { style: { color: C.muted, fontSize: 11 } }, '-');
+      const prices = (r.lots || []).map(function(l) { return l.costPerKg || 0; }).filter(function(p) { return p > 0; });
+      const minP = prices.length ? Math.min.apply(null, prices) : 0;
+      const maxP = prices.length ? Math.max.apply(null, prices) : 0;
+      const priceLabel = minP === maxP ? fmtKES(minP) : (fmtKES(minP) + '\u2013' + fmtKES(maxP));
+      return h('div', { style: { fontSize: 11, lineHeight: 1.3 } },
+        h('div', { style: { fontWeight: 700, color: C.earth } }, n + ' lot' + (n > 1 ? 's' : '')),
+        h('div', { style: { color: C.muted, fontFamily: "'DM Mono',monospace" } }, priceLabel + '/kg')
+      );
+    }},
     { key: 'sellPrice', label: 'Sell Price', render: function(r) {
       return h('span', { style: { fontWeight: 700, color: C.grass } }, fmtKES(getSellPrice(r)) + '/kg');
     }},
-    { key: 'margin', label: 'Margin', render: function(r) {
-      return h('span', { style: { fontSize: 11, color: C.muted } }, r.sellPriceDirect ? 'Fixed' : ((r.margin || 20) + '%'));
+    { key: 'value', label: 'Stock Value', render: function(r) {
+      const v = (r.lots || []).reduce(function(s, l) { return s + (l.remainingQty || 0) * (l.costPerKg || 0); }, 0);
+      return fmtKES(v);
     }},
-    { key: 'value', label: 'Stock Value', render: function(r) { return fmtKES(r.qty * (r.lastPrice || 0)); } },
-    { key: 'actions', label: '', render: function(r) {
+    { key: 'actions', label: '', sortable: false, render: function(r) {
       return h('div', { style: { display: 'flex', gap: 4 } },
+        h(Btn, { size: 'sm', variant: 'secondary', onClick: function() { setShowLots(r); } }, 'Lots'),
         h(Btn, { size: 'sm', variant: 'secondary', onClick: function() { openPriceEdit(r); } }, 'Price'),
         user && user.role === 'admin' ? h(Btn, { size: 'sm', variant: 'danger', onClick: function() { deleteInventoryItem(r); } }, 'Del') : null
       );
@@ -1116,6 +1337,7 @@ function InventoryPage() {
     ),
     addModal,
     priceModal,
+    lotsModal,
     h(Card, null,
       h(CardTitle, null, 'Current Inventory'),
       h(Tbl, { cols: invCols, rows: inventory, emptyMsg: 'No inventory items.' })
@@ -1803,19 +2025,24 @@ function FormulatorPage(props) {
     const ingrs = getActiveWithANF();
     const items = Object.entries(srcFormula).map(function(entry) {
       const id = entry[0], pct = entry[1];
-      // Find ingredient definition: active ANF list first, then full ingredients
       const ing = ingrs.find(function(x) { return x.id === id; }) || ingredients.find(function(x) { return x.id === id; });
       const inv = inventory.find(function(x) { return x.id === id; });
       const sp = getSellPriceForIng(ing || { id: id });
-      // Buy price: prefer inventory lastPrice, fall back to ingredient master price,
-      // then to the ingredient's own price field. If STILL zero, we'll flag it.
+      const qty = (pct / 100) * batchKg;
+      // Estimate buy cost via FIFO lot consumption (no mutation here)
       let buyPrice = 0;
-      if (inv && inv.lastPrice) buyPrice = inv.lastPrice;
-      else if (ing && ing.lastPrice) buyPrice = ing.lastPrice;
-      else if (ing && ing.price) buyPrice = ing.price;
+      if (inv && (inv.lots || []).length > 0) {
+        buyPrice = estimateLotCostFIFO(inv, qty);
+      } else if (inv && inv.lastPrice) {
+        buyPrice = inv.lastPrice;
+      } else if (ing && ing.lastPrice) {
+        buyPrice = ing.lastPrice;
+      } else if (ing && ing.price) {
+        buyPrice = ing.price;
+      }
       return {
         id: id, name: ing ? ing.name : '(unknown)',
-        pct: pct, qty: (pct / 100) * batchKg,
+        pct: pct, qty: qty,
         sellPricePerKg: sp,
         buyPricePerKg: buyPrice,
         pricePerKg: sp, // legacy
@@ -1829,7 +2056,7 @@ function FormulatorPage(props) {
       items: items,
       totalSellValue: totalSellValue,
       totalBuyCost: totalBuyCost,
-      totalCost: totalBuyCost, // legacy field
+      totalCost: totalBuyCost,
       subSpec: !!isSubSpec,
       srcFormula: srcFormula,
       missingBuyPriceCount: missingCount
@@ -1851,20 +2078,32 @@ function FormulatorPage(props) {
     if (!pendingSale || !selPrice) return;
     const insuff = pendingSale.items.filter(function(item) {
       const st = inventory.find(function(s) { return s.id === item.id; });
-      return !st || st.qty < item.qty;
+      return !st || availableQty(st) < item.qty;
     });
     if (insuff.length > 0) {
       showT('Insufficient stock: ' + insuff.map(function(i) { return i.name; }).join(', '), 'error');
       return;
     }
-    setInventory(inventory.map(function(inv) {
-      const used = pendingSale.items.find(function(i) { return i.id === inv.id; });
-      if (!used) return inv;
-      return Object.assign({}, inv, { qty: Math.max(0, inv.qty - used.qty) });
-    }));
+    // Consume lots FIFO for each line item, capturing real cost
+    const consumptions = [];
+    const enrichedItems = pendingSale.items.map(function(item) {
+      const inv = inventory.find(function(s) { return s.id === item.id; });
+      const r = consumeFromLots(inv, item.qty);
+      consumptions.push({ itemId: item.id, newLots: r.newLots });
+      const realCostPerKg = item.qty > 0 ? r.totalCost / item.qty : 0;
+      return Object.assign({}, item, {
+        buyPricePerKg: Math.round(realCostPerKg * 100) / 100,
+        buyCostTotal: Math.round(r.totalCost * 100) / 100,
+        lotsUsed: r.consumed
+      });
+    });
+    const newInv = applyLotConsumptions(inventory, consumptions);
+    setInventory(newInv);
+
+    const realTotalBuyCost = enrichedItems.reduce(function(s, i) { return s + (i.buyCostTotal || 0); }, 0);
     const agreedTotal = parseFloat(selPrice) * batchKg;
     const cust = customers.find(function(c) { return c.id === custId; });
-    const profit = agreedTotal - pendingSale.totalBuyCost;
+    const profit = agreedTotal - realTotalBuyCost;
     const isSubSpec = !!pendingSale.subSpec;
     const newSale = {
       id: uid(), date: today(), species: species, stage: stage, batchKg: batchKg,
@@ -1872,13 +2111,13 @@ function FormulatorPage(props) {
       customerName: cust ? cust.name : 'Walk-in',
       customer: cust ? cust.name : 'Walk-in',
       product: species + ' - ' + stage + (isSubSpec ? ' (SUB-SPEC)' : '') + ' (' + batchKg + 'kg)',
-      cost: pendingSale.totalBuyCost,
+      cost: realTotalBuyCost,
       total: agreedTotal,
       totalRevenue: agreedTotal,
-      totalCost: pendingSale.totalBuyCost,
+      totalCost: realTotalBuyCost,
       profit: profit,
       sellPricePerKg: parseFloat(selPrice),
-      items: pendingSale.items,
+      items: enrichedItems,
       formula: pendingSale.srcFormula || formula,
       subSpec: isSubSpec
     };
@@ -1887,6 +2126,7 @@ function FormulatorPage(props) {
     const entry = {
       id: uid(), type: isSubSpec ? 'SALE-SUBSPEC' : 'SALE', date: today(), product: newSale.product,
       qty: batchKg, total: agreedTotal,
+      buyCost: realTotalBuyCost,
       by: user ? user.name : ''
     };
     db.set('stockLedger', ledger.concat([entry]));
@@ -4272,8 +4512,9 @@ function DirectSalePage() {
 
   const [custId, setCustId] = useState('');
   const [walkInName, setWalkInName] = useState('');
-  const [items, setItems] = useState([]); // [{itemId, qty, totalPrice}]
+  const [items, setItems] = useState([]); // [{itemId, qty, totalPrice, lotOrder?}]
   const [pickerId, setPickerId] = useState('');
+  const [lotPickerIdx, setLotPickerIdx] = useState(null); // index of line whose lots we're picking
   const [toast, setToast] = useState(null);
 
   function showT(msg, type) {
@@ -4293,10 +4534,11 @@ function DirectSalePage() {
     return Math.round(sp * qty * 100) / 100;
   }
 
-  function getBuyCost(itemId, qty) {
+  function getBuyCost(itemId, qty, lotOrder) {
     const inv = inventory.find(function(i) { return i.id === itemId; });
     if (!inv) return 0;
-    return (inv.lastPrice || 0) * qty;
+    const r = consumeFromLots(inv, qty, lotOrder);
+    return r.totalCost;
   }
 
   function addLine() {
@@ -4343,7 +4585,7 @@ function DirectSalePage() {
   }
 
   const totalRevenue = items.reduce(function(s, it) { return s + (it.totalPrice || 0); }, 0);
-  const totalBuyCost = items.reduce(function(s, it) { return s + getBuyCost(it.itemId, it.qty); }, 0);
+  const totalBuyCost = items.reduce(function(s, it) { return s + getBuyCost(it.itemId, it.qty, it.lotOrder); }, 0);
   const totalProfit = totalRevenue - totalBuyCost;
   const margin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
@@ -4359,32 +4601,37 @@ function DirectSalePage() {
     const cust = customers.find(function(c) { return c.id === custId; });
     const customerName = cust ? cust.name : (walkInName.trim() || 'Walk-in');
 
-    // Decrement inventory
-    const newInv = inventory.map(function(inv) {
-      const used = items.find(function(it) { return it.itemId === inv.id; });
-      if (!used) return inv;
-      return Object.assign({}, inv, { qty: Math.max(0, inv.qty - used.qty) });
-    });
-    setInventory(newInv);
-
-    // Build sale items array with full line info
+    // Consume lots FIFO for each line; build consumption records
+    const consumptions = [];
     const saleItems = items.map(function(it) {
       const inv = inventory.find(function(x) { return x.id === it.itemId; });
       const ing = ingredients.find(function(x) { return x.id === it.itemId; });
-      const buyPrice = inv ? (inv.lastPrice || 0) : 0;
+      const r = consumeFromLots(inv, it.qty, it.lotOrder || null);
+      consumptions.push({ itemId: it.itemId, newLots: r.newLots });
+      const realCost = r.totalCost;
+      const realCostPerKg = it.qty > 0 ? realCost / it.qty : 0;
       return {
         id: it.itemId,
         name: (ing || inv || {}).name || '(unknown)',
         qty: it.qty,
         totalPrice: it.totalPrice,
         pricePerKg: it.qty > 0 ? Math.round((it.totalPrice / it.qty) * 100) / 100 : 0,
-        buyPricePerKg: buyPrice
+        buyPricePerKg: Math.round(realCostPerKg * 100) / 100,
+        buyCostTotal: Math.round(realCost * 100) / 100,
+        lotsUsed: r.consumed
       };
     });
+
+    // Apply all consumptions in a single inventory update
+    const newInv = applyLotConsumptions(inventory, consumptions);
+    setInventory(newInv);
 
     const productLabel = items.length === 1
       ? saleItems[0].name + ' (' + saleItems[0].qty + 'kg)'
       : 'Direct sale: ' + items.length + ' items';
+
+    const realTotalBuyCost = saleItems.reduce(function(s, si) { return s + si.buyCostTotal; }, 0);
+    const realProfit = totalRevenue - realTotalBuyCost;
 
     const newSale = {
       id: uid(),
@@ -4394,11 +4641,11 @@ function DirectSalePage() {
       customerName: customerName,
       customer: customerName,
       product: productLabel,
-      cost: totalBuyCost,
+      cost: realTotalBuyCost,
       total: totalRevenue,
       totalRevenue: totalRevenue,
-      totalCost: totalBuyCost,
-      profit: totalProfit,
+      totalCost: realTotalBuyCost,
+      profit: realProfit,
       batchKg: items.reduce(function(s, it) { return s + it.qty; }, 0),
       items: saleItems
     };
@@ -4411,6 +4658,8 @@ function DirectSalePage() {
         id: uid(), type: 'DIRECT_SALE', date: today(),
         itemId: si.id, itemName: si.name,
         qty: si.qty, total: si.totalPrice,
+        buyCost: si.buyCostTotal,
+        lotsUsed: si.lotsUsed,
         customerName: customerName,
         by: user ? user.name : ''
       };
@@ -4448,7 +4697,134 @@ function DirectSalePage() {
       })
   );
 
+  // Lot picker modal — pick which lots to consume for a given line, in priority order
+  const activeItem = (lotPickerIdx != null) ? items[lotPickerIdx] : null;
+  const activeInv = activeItem ? inventory.find(function(x) { return x.id === activeItem.itemId; }) : null;
+  const activeIng = activeItem ? ingredients.find(function(x) { return x.id === activeItem.itemId; }) : null;
+
+  function setLotOrderForLine(idx, lotOrder) {
+    setItems(items.map(function(it, i) {
+      if (i !== idx) return it;
+      return Object.assign({}, it, { lotOrder: lotOrder && lotOrder.length > 0 ? lotOrder : null });
+    }));
+  }
+
+  // Build a preview of FIFO consumption to show the user what AUTO would do
+  const fifoPreview = (activeItem && activeInv) ? consumeFromLots(activeInv, activeItem.qty) : null;
+  // Build the user's manual consumption preview if lotOrder is set
+  const manualPreview = (activeItem && activeInv && activeItem.lotOrder && activeItem.lotOrder.length > 0)
+    ? consumeFromLots(activeInv, activeItem.qty, activeItem.lotOrder)
+    : null;
+
+  const lotPickerModal = (activeItem && activeInv) ? h(Modal, {
+    title: 'Choose lots — ' + ((activeIng || activeInv).name || ''),
+    onClose: function() { setLotPickerIdx(null); },
+    width: 640
+  },
+    h('div', { style: { fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.5 } },
+      'Pick lots in the order you want them consumed. Click a lot to add it to the order; click again to remove. Leave empty to use the FIFO default (oldest first).'
+    ),
+    // Auto FIFO preview
+    h('div', {
+      style: {
+        background: '#f0f9f4', border: '1px solid ' + C.leaf + '66',
+        borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12, color: C.earth
+      }
+    },
+      h('strong', null, 'FIFO default would consume: '),
+      fifoPreview && fifoPreview.consumed.length > 0
+        ? fifoPreview.consumed.map(function(c) {
+            return c.qty.toFixed(1) + 'kg @ ' + fmtKES(c.costPerKg) + '/kg (' + c.purchaseDate + ')';
+          }).join(' \u2192 ')
+        : '(no lots available)',
+      fifoPreview && fifoPreview.shortfall > 0 ? h('div', {
+        style: { color: C.danger, fontWeight: 700, marginTop: 4 }
+      }, 'Shortfall: ' + fifoPreview.shortfall.toFixed(1) + ' kg') : null
+    ),
+    // List of all lots
+    h('div', { style: { fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 6 } }, 'Available lots'),
+    h('div', null,
+      (activeInv.lots || []).length === 0
+        ? h('div', {
+          style: { padding: 16, color: C.muted, fontSize: 12, fontStyle: 'italic', background: C.cream, borderRadius: 8, textAlign: 'center' }
+        }, 'No lots available')
+        : sortedLotsFIFO(activeInv.lots).map(function(lot) {
+            const order = activeItem.lotOrder || [];
+            const orderIdx = order.indexOf(lot.lotId);
+            const inOrder = orderIdx >= 0;
+            return h('div', {
+              key: lot.lotId,
+              onClick: function() {
+                let newOrder;
+                if (inOrder) {
+                  newOrder = order.filter(function(id) { return id !== lot.lotId; });
+                } else {
+                  newOrder = order.concat([lot.lotId]);
+                }
+                setLotOrderForLine(lotPickerIdx, newOrder);
+              },
+              style: {
+                display: 'grid', gridTemplateColumns: '32px 1fr 1fr 1fr 1fr',
+                gap: 10, padding: '10px 12px', marginBottom: 6,
+                alignItems: 'center', cursor: 'pointer',
+                background: inOrder ? '#f0f9f4' : C.cream,
+                border: '2px solid ' + (inOrder ? C.grass : C.border),
+                borderRadius: 8, fontSize: 12,
+                transition: 'all 0.15s'
+              }
+            },
+              h('div', {
+                style: {
+                  fontFamily: "'DM Mono',monospace", fontWeight: 700,
+                  color: inOrder ? C.grass : C.muted, fontSize: 14, textAlign: 'center'
+                }
+              }, inOrder ? '#' + (orderIdx + 1) : ''),
+              h('div', { style: { color: C.earth, fontWeight: 600 } }, lot.purchaseDate),
+              h('div', { style: { color: C.muted, fontSize: 11 } }, lot.supplier || '-'),
+              h('div', {
+                style: { textAlign: 'right', fontFamily: "'DM Mono',monospace", color: C.earth, fontWeight: 600 }
+              }, fmt(lot.remainingQty, 1) + ' kg avail.'),
+              h('div', {
+                style: { textAlign: 'right', fontFamily: "'DM Mono',monospace", color: C.earth, fontWeight: 700 }
+              }, fmtKES(lot.costPerKg))
+            );
+          })
+    ),
+    // Manual order preview if any
+    manualPreview ? h('div', {
+      style: {
+        background: '#fff4e0', border: '1px solid ' + C.warning + '66',
+        borderRadius: 8, padding: '10px 12px', marginTop: 12, fontSize: 12, color: C.earth
+      }
+    },
+      h('strong', null, 'Your manual order will consume: '),
+      manualPreview.consumed.length > 0
+        ? manualPreview.consumed.map(function(c) {
+            return c.qty.toFixed(1) + 'kg @ ' + fmtKES(c.costPerKg) + '/kg';
+          }).join(' \u2192 ')
+        : '(none)',
+      h('div', {
+        style: { marginTop: 4, fontFamily: "'DM Mono',monospace" }
+      },
+        'Total cost: ' + fmtKES(manualPreview.totalCost),
+        manualPreview.shortfall > 0 ? h('span', { style: { color: C.danger, fontWeight: 700, marginLeft: 12 } },
+          '\u26A0 Shortfall ' + manualPreview.shortfall.toFixed(1) + ' kg \u2014 will fall back to FIFO for the rest') : null
+      )
+    ) : null,
+    h('div', { style: { display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 16 } },
+      h(Btn, {
+        onClick: function() { setLotOrderForLine(lotPickerIdx, null); setLotPickerIdx(null); },
+        variant: 'secondary'
+      }, 'Reset to FIFO'),
+      h(Btn, {
+        onClick: function() { setLotPickerIdx(null); },
+        variant: 'success'
+      }, 'Done')
+    )
+  ) : null;
+
   return h('div', { style: { padding: '0 26px 26px' } },
+    lotPickerModal,
     toast ? h(Toast, { msg: toast.msg, type: toast.type }) : null,
     h(PageHdr, {
       title: '\u{1F6D2} Direct Sale',
@@ -4502,7 +4878,7 @@ function DirectSalePage() {
           h('div', {
             style: {
               display: 'grid',
-              gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.2fr 40px',
+              gridTemplateColumns: '2fr 0.8fr 1fr 1.2fr 1fr 40px',
               gap: 8, padding: '6px 4px',
               fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2,
               color: C.muted, fontFamily: "'DM Mono',monospace",
@@ -4510,10 +4886,10 @@ function DirectSalePage() {
             }
           },
             h('div', null, 'Ingredient'),
-            h('div', { style: { textAlign: 'right' } }, 'In stock'),
+            h('div', { style: { textAlign: 'right' } }, 'Stock'),
             h('div', { style: { textAlign: 'right' } }, 'Qty (kg)'),
-            h('div', { style: { textAlign: 'right' } }, 'Total Price KES'),
-            h('div', { style: { textAlign: 'right' } }, 'Per kg KES'),
+            h('div', { style: { textAlign: 'right' } }, 'Total KES'),
+            h('div', { style: { textAlign: 'center' } }, 'Lots'),
             h('div', null, '')
           ),
           items.map(function(it, idx) {
@@ -4522,11 +4898,12 @@ function DirectSalePage() {
             const stock = getStock(it.itemId);
             const overStock = it.qty > stock;
             const perKg = it.qty > 0 ? (it.totalPrice / it.qty) : 0;
+            const isManual = !!(it.lotOrder && it.lotOrder.length > 0);
             return h('div', {
               key: it.itemId,
               style: {
                 display: 'grid',
-                gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.2fr 40px',
+                gridTemplateColumns: '2fr 0.8fr 1fr 1.2fr 1fr 40px',
                 gap: 8, padding: '8px 4px',
                 alignItems: 'center',
                 borderBottom: '1px solid ' + C.border,
@@ -4560,31 +4937,42 @@ function DirectSalePage() {
                   background: 'white'
                 }
               }),
-              h('input', {
-                type: 'number',
-                step: '0.01',
-                min: 0,
-                value: it.totalPrice,
-                onChange: function(e) { updatePrice(idx, e.target.value); },
+              h('div', null,
+                h('input', {
+                  type: 'number',
+                  step: '0.01',
+                  min: 0,
+                  value: it.totalPrice,
+                  onChange: function(e) { updatePrice(idx, e.target.value); },
+                  style: {
+                    padding: '6px 8px',
+                    border: '1px solid ' + C.border,
+                    borderRadius: 6,
+                    fontSize: 12,
+                    textAlign: 'right',
+                    fontFamily: "'DM Mono',monospace",
+                    width: '100%',
+                    background: 'white',
+                    fontWeight: 700,
+                    color: C.grass
+                  }
+                }),
+                perKg > 0 ? h('div', {
+                  style: { fontSize: 10, color: C.muted, textAlign: 'right', marginTop: 2, fontFamily: "'DM Mono',monospace" }
+                }, '@ ' + perKg.toFixed(2) + '/kg') : null
+              ),
+              h('button', {
+                onClick: function() { setLotPickerIdx(idx); },
                 style: {
-                  padding: '6px 8px',
-                  border: '1px solid ' + C.border,
-                  borderRadius: 6,
-                  fontSize: 12,
-                  textAlign: 'right',
-                  fontFamily: "'DM Mono',monospace",
-                  width: '100%',
-                  background: 'white',
-                  fontWeight: 700,
-                  color: C.grass
-                }
-              }),
-              h('div', {
-                style: {
-                  textAlign: 'right', fontSize: 11,
-                  color: C.muted, fontFamily: "'DM Mono',monospace"
-                }
-              }, perKg > 0 ? perKg.toFixed(2) : '-'),
+                  padding: '5px 8px',
+                  border: '1px solid ' + (isManual ? C.warning : C.border),
+                  background: isManual ? '#fff4e0' : 'white',
+                  color: isManual ? C.warning : C.muted,
+                  borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  fontFamily: "'DM Mono',monospace"
+                },
+                title: isManual ? 'Manual lot order set' : 'FIFO (oldest lot first). Click to override.'
+              }, isManual ? '\u{1F510} MANUAL' : 'FIFO'),
               h('button', {
                 onClick: function() { removeLine(idx); },
                 style: {

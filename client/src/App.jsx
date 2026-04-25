@@ -8,7 +8,7 @@ import {
   getReqForStage, buildSpeciesList
 } from "./constants.js";
 import { solveLeastCost, solveLeastCostLP, calcNutrients, calcCost } from "./solver.js";
-import { C, uid, today, dateRange, fmt, fmtKES } from "./utils.js";
+import { C, uid, today, dateRange, fmt, fmtKES, migrateInventoryLots } from "./utils.js";
 import Pages from "./pages.mjs";
 
 // Context
@@ -67,9 +67,9 @@ export default function App() {
   });
   const [inventory, setInvState] = useState(() => {
     const cached = db.get("inventory", null);
-    if (cached && cached.length > 0) return cached;
+    if (cached && cached.length > 0) return migrateInventoryLots(cached);
     const ingrs = seedIngredients();
-    return seedInventory(ingrs);
+    return migrateInventoryLots(seedInventory(ingrs));
   });
   const [sales, setSalesState] = useState(() => db.get("sales", []));
   const [purchases, setPurchState] = useState(() => db.get("purchases", []));
@@ -78,7 +78,7 @@ export default function App() {
 
   // Setters: update state, cache to localStorage, and push to server
   const setIngredients = v => { setIngrState(v); db.set("ingredients", v); serverPush("ingredients", v); };
-  const setInventory   = v => { setInvState(v);  db.set("inventory", v);   serverPush("inventory", v); };
+  const setInventory   = v => { const m = migrateInventoryLots(v); setInvState(m);  db.set("inventory", m);   serverPush("inventory", m); };
   const setSales       = v => { setSalesState(v); db.set("sales", v);      serverPush("sales", v); };
   const setPurchases   = v => { setPurchState(v); db.set("purchases", v);  serverPush("purchases", v); };
   const setCustomers   = v => { setCustState(v);  db.set("customers", v);  serverPush("customers", v); };
@@ -88,7 +88,7 @@ export default function App() {
   useEffect(() => {
     const timeout = new Promise(res => setTimeout(() => res({}), 5000));
     Promise.race([serverPullAll(), timeout]).then(data => {
-      if (data.inventory?.data)     { setInvState(data.inventory.data); db.set("inventory", data.inventory.data); }
+      if (data.inventory?.data)     { const m=migrateInventoryLots(data.inventory.data); setInvState(m); db.set("inventory", m); }
       if (data.purchases?.data)     { setPurchState(data.purchases.data); db.set("purchases", data.purchases.data); }
       if (data.sales?.data)         { setSalesState(data.sales.data); db.set("sales", data.sales.data); }
       if (data.customers?.data)     { setCustState(data.customers.data); db.set("customers", data.customers.data); }
@@ -120,7 +120,7 @@ export default function App() {
       // Skip poll if user typed in the last 3 seconds
       if (Date.now() - lastInputTime < 3000) return;
       serverPullAll().then(data => {
-        if (data.inventory?.data)     { setInvState(data.inventory.data); db.set("inventory", data.inventory.data); }
+        if (data.inventory?.data)     { const m=migrateInventoryLots(data.inventory.data); setInvState(m); db.set("inventory", m); }
         if (data.purchases?.data)     { setPurchState(data.purchases.data); db.set("purchases", data.purchases.data); }
         if (data.sales?.data)         { setSalesState(data.sales.data); db.set("sales", data.sales.data); }
         if (data.customers?.data)     { setCustState(data.customers.data); db.set("customers", data.customers.data); }

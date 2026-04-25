@@ -35,6 +35,33 @@ export const fmtKES = (n) =>
     maximumFractionDigits: 2,
   });
 
+// ── INVENTORY LOT MIGRATION ──────────────────────────────────────────────────
+// Converts legacy inventory rows (single qty + lastPrice) into lot-tracked
+// rows where each row has a `lots` array. Idempotent — already-migrated rows
+// pass through, with their derived qty recomputed.
+export function migrateInventoryLots(inv) {
+  if (!Array.isArray(inv)) return [];
+  return inv.map(row => {
+    if (Array.isArray(row.lots)) {
+      const totalQty = row.lots.reduce((s, l) => s + (l.remainingQty || 0), 0);
+      return { ...row, qty: totalQty };
+    }
+    if (!row.qty || row.qty <= 0) {
+      return { ...row, lots: [], qty: 0 };
+    }
+    const legacyLot = {
+      lotId: 'lot_legacy_' + (row.id || Math.random().toString(36).slice(2, 10)),
+      purchaseDate: row.lastPurchaseDate || new Date().toISOString().slice(0, 10),
+      supplier: '',
+      originalQty: row.qty,
+      remainingQty: row.qty,
+      costPerKg: row.lastPrice || 0,
+      ts: Date.now()
+    };
+    return { ...row, lots: [legacyLot] };
+  });
+}
+
 // ── EXCEL EXPORT HELPER ──────────────────────────────────────────────────────
 export async function exportToExcel(rows, filename, sheetName) {
   try {
