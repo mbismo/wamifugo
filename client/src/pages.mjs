@@ -4591,12 +4591,20 @@ function DirectSalePage() {
     return inv ? inv.row.qty : 0;
   }
 
-  function getDefaultPrice(itemId, qty) {
+  function getDefaultPrice(itemId, qty, lotOrder) {
     const inv = findInvRow(itemId);
     if (!inv) return 0;
     const row = inv.row;
-    const sp = row.sellPriceDirect || Math.round((row.lastPrice || 0) * (1 + (row.margin || 20) / 100) * 100) / 100;
-    return Math.round(sp * qty * 100) / 100;
+    // If a fixed sell price is set, use it (lots don't change this)
+    if (row.sellPriceDirect) {
+      return Math.round(row.sellPriceDirect * qty * 100) / 100;
+    }
+    // Otherwise: compute weighted average buy cost from the actual lots that
+    // would be consumed (FIFO or manual order), then apply margin.
+    const margin = row.margin != null ? row.margin : 20;
+    const r = consumeFromLots(row, qty, lotOrder);
+    const avgCost = qty > 0 && r.totalCost > 0 ? r.totalCost / qty : (row.lastPrice || 0);
+    return Math.round(avgCost * (1 + margin / 100) * qty * 100) / 100;
   }
 
   function getBuyCost(itemId, qty, lotOrder) {
@@ -4631,9 +4639,7 @@ function DirectSalePage() {
     setItems(items.map(function(it, i) {
       if (i !== idx) return it;
       const newQty = isNaN(qty) ? 0 : Math.max(0, qty);
-      // Re-suggest a default price proportional to qty change, BUT only if user hasn't manually edited
-      // For simplicity: regenerate the suggested price each time qty changes
-      return Object.assign({}, it, { qty: newQty, totalPrice: getDefaultPrice(it.itemId, newQty) });
+      return Object.assign({}, it, { qty: newQty, totalPrice: getDefaultPrice(it.itemId, newQty, it.lotOrder) });
     }));
   }
 
@@ -4794,11 +4800,17 @@ function DirectSalePage() {
   const activeInv = activeFound ? activeFound.row : null;
   const activeDef = activeItem ? findItemDef(activeItem.itemId) : null;
   const activeIng = activeDef ? activeDef.def : null;
+  const activeUnit = (activeDef && activeDef.kind === 'product')
+    ? (activeDef.def.unit || 'unit')
+    : 'kg';
 
   function setLotOrderForLine(idx, lotOrder) {
     setItems(items.map(function(it, i) {
       if (i !== idx) return it;
-      return Object.assign({}, it, { lotOrder: lotOrder && lotOrder.length > 0 ? lotOrder : null });
+      const newLotOrder = lotOrder && lotOrder.length > 0 ? lotOrder : null;
+      // Re-default the sell price based on the actual cost of the chosen lots
+      const newDefaultPrice = getDefaultPrice(it.itemId, it.qty, newLotOrder);
+      return Object.assign({}, it, { lotOrder: newLotOrder, totalPrice: newDefaultPrice });
     }));
   }
 
@@ -4827,12 +4839,12 @@ function DirectSalePage() {
       h('strong', null, 'FIFO default would consume: '),
       fifoPreview && fifoPreview.consumed.length > 0
         ? fifoPreview.consumed.map(function(c) {
-            return c.qty.toFixed(1) + 'kg @ ' + fmtKES(c.costPerKg) + '/kg (' + c.purchaseDate + ')';
+            return c.qty.toFixed(activeUnit === 'kg' ? 1 : 0) + ' ' + activeUnit + ' @ ' + fmtKES(c.costPerKg) + '/' + activeUnit + ' (' + c.purchaseDate + ')';
           }).join(' \u2192 ')
         : '(no lots available)',
       fifoPreview && fifoPreview.shortfall > 0 ? h('div', {
         style: { color: C.danger, fontWeight: 700, marginTop: 4 }
-      }, 'Shortfall: ' + fifoPreview.shortfall.toFixed(1) + ' kg') : null
+      }, 'Shortfall: ' + fifoPreview.shortfall.toFixed(activeUnit === 'kg' ? 1 : 0) + ' ' + activeUnit) : null
     ),
     // List of all lots
     h('div', { style: { fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 6 } }, 'Available lots'),
@@ -4876,10 +4888,10 @@ function DirectSalePage() {
               h('div', { style: { color: C.muted, fontSize: 11 } }, lot.supplier || '-'),
               h('div', {
                 style: { textAlign: 'right', fontFamily: "'DM Mono',monospace", color: C.earth, fontWeight: 600 }
-              }, fmt(lot.remainingQty, 1) + ' kg avail.'),
+              }, fmt(lot.remainingQty, activeUnit === 'kg' ? 1 : 0) + ' ' + activeUnit + ' avail.'),
               h('div', {
                 style: { textAlign: 'right', fontFamily: "'DM Mono',monospace", color: C.earth, fontWeight: 700 }
-              }, fmtKES(lot.costPerKg))
+              }, fmtKES(lot.costPerKg) + '/' + activeUnit)
             );
           })
     ),
@@ -4893,7 +4905,7 @@ function DirectSalePage() {
       h('strong', null, 'Your manual order will consume: '),
       manualPreview.consumed.length > 0
         ? manualPreview.consumed.map(function(c) {
-            return c.qty.toFixed(1) + 'kg @ ' + fmtKES(c.costPerKg) + '/kg';
+            return c.qty.toFixed(activeUnit === 'kg' ? 1 : 0) + ' ' + activeUnit + ' @ ' + fmtKES(c.costPerKg) + '/' + activeUnit;
           }).join(' \u2192 ')
         : '(none)',
       h('div', {
@@ -4901,7 +4913,7 @@ function DirectSalePage() {
       },
         'Total cost: ' + fmtKES(manualPreview.totalCost),
         manualPreview.shortfall > 0 ? h('span', { style: { color: C.danger, fontWeight: 700, marginLeft: 12 } },
-          '\u26A0 Shortfall ' + manualPreview.shortfall.toFixed(1) + ' kg \u2014 will fall back to FIFO for the rest') : null
+          '\u26A0 Shortfall ' + manualPreview.shortfall.toFixed(activeUnit === 'kg' ? 1 : 0) + ' ' + activeUnit + ' \u2014 will fall back to FIFO for the rest') : null
       )
     ) : null,
     h('div', { style: { display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 16 } },
@@ -4978,9 +4990,9 @@ function DirectSalePage() {
               borderBottom: '2px solid ' + C.border
             }
           },
-            h('div', null, 'Ingredient'),
+            h('div', null, 'Item'),
             h('div', { style: { textAlign: 'right' } }, 'Stock'),
-            h('div', { style: { textAlign: 'right' } }, 'Qty (kg)'),
+            h('div', { style: { textAlign: 'right' } }, 'Qty'),
             h('div', { style: { textAlign: 'right' } }, 'Total KES'),
             h('div', { style: { textAlign: 'center' } }, 'Lots'),
             h('div', null, '')
@@ -5020,7 +5032,7 @@ function DirectSalePage() {
               }, stock.toFixed(itemUnit === 'kg' ? 1 : 0) + ' ' + itemUnit),
               h('input', {
                 type: 'number',
-                step: '0.1',
+                step: itemUnit === 'kg' || itemUnit === 'litre' ? '0.1' : '1',
                 min: 0,
                 value: it.qty,
                 onChange: function(e) { updateQty(idx, e.target.value); },
@@ -5057,7 +5069,7 @@ function DirectSalePage() {
                 }),
                 perKg > 0 ? h('div', {
                   style: { fontSize: 10, color: C.muted, textAlign: 'right', marginTop: 2, fontFamily: "'DM Mono',monospace" }
-                }, '@ ' + perKg.toFixed(2) + '/kg') : null
+                }, '@ ' + perKg.toFixed(2) + '/' + itemUnit) : null
               ),
               h('button', {
                 onClick: function() { setLotPickerIdx(idx); },
