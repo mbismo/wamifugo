@@ -38,6 +38,7 @@ async function serverPush(col, data) {
 const NAV = [
   { key: 'dashboard', icon: '\u{1F4CA}', label: 'Dashboard' },
   { key: 'formulator', icon: '\u{1F9EA}', label: 'Feed Formulator' },
+  { key: 'direct_sale', icon: '\u{1F6D2}', label: 'Direct Sale' },
   { key: 'saved_formulas', icon: '\u{1F4BE}', label: 'Saved Formulas' },
   { key: 'inventory', icon: '\u{1F4E6}', label: 'Inventory' },
   { key: 'customers', icon: '\u{1F465}', label: 'Customers' },
@@ -227,7 +228,7 @@ function Sel(props) {
   }, props.style || {});
   const labelEl = props.label ? h('div', { style: labelStyle }, props.label) : null;
   const options = (props.options || []).map(function(o) {
-    return h('option', { key: o.value, value: o.value }, o.label);
+    return h('option', { key: o.value, value: o.value, disabled: o.disabled || false }, o.label);
   });
   const select = h('select', {
     value: props.value || '',
@@ -4257,6 +4258,393 @@ function SavedFormulasPage(props) {
   );
 }
 
+// ========== DIRECT SALE PAGE ==========
+
+function DirectSalePage() {
+  const ctx = useContext(Ctx);
+  const ingredients = ctx.ingredients || [];
+  const inventory = ctx.inventory || [];
+  const setInventory = ctx.setInventory;
+  const sales = ctx.sales || [];
+  const setSales = ctx.setSales;
+  const customers = ctx.customers || [];
+  const user = ctx.user;
+
+  const [custId, setCustId] = useState('');
+  const [walkInName, setWalkInName] = useState('');
+  const [items, setItems] = useState([]); // [{itemId, qty, totalPrice}]
+  const [pickerId, setPickerId] = useState('');
+  const [toast, setToast] = useState(null);
+
+  function showT(msg, type) {
+    setToast({ msg: msg, type: type || 'success' });
+    setTimeout(function() { setToast(null); }, 3500);
+  }
+
+  function getStock(itemId) {
+    const inv = inventory.find(function(i) { return i.id === itemId; });
+    return inv ? inv.qty : 0;
+  }
+
+  function getDefaultPrice(itemId, qty) {
+    const inv = inventory.find(function(i) { return i.id === itemId; });
+    if (!inv) return 0;
+    const sp = inv.sellPriceDirect || Math.round((inv.lastPrice || 0) * (1 + (inv.margin || 20) / 100) * 100) / 100;
+    return Math.round(sp * qty * 100) / 100;
+  }
+
+  function getBuyCost(itemId, qty) {
+    const inv = inventory.find(function(i) { return i.id === itemId; });
+    if (!inv) return 0;
+    return (inv.lastPrice || 0) * qty;
+  }
+
+  function addLine() {
+    if (!pickerId) return;
+    if (items.find(function(it) { return it.itemId === pickerId; })) {
+      showT('Already added. Edit quantity or remove the existing line.', 'error');
+      return;
+    }
+    const inv = inventory.find(function(i) { return i.id === pickerId; });
+    if (!inv || inv.qty <= 0) {
+      showT('No stock for this ingredient.', 'error');
+      return;
+    }
+    const defaultQty = 1;
+    setItems(items.concat([{
+      itemId: pickerId,
+      qty: defaultQty,
+      totalPrice: getDefaultPrice(pickerId, defaultQty)
+    }]));
+    setPickerId('');
+  }
+
+  function updateQty(idx, val) {
+    const qty = parseFloat(val);
+    setItems(items.map(function(it, i) {
+      if (i !== idx) return it;
+      const newQty = isNaN(qty) ? 0 : Math.max(0, qty);
+      // Re-suggest a default price proportional to qty change, BUT only if user hasn't manually edited
+      // For simplicity: regenerate the suggested price each time qty changes
+      return Object.assign({}, it, { qty: newQty, totalPrice: getDefaultPrice(it.itemId, newQty) });
+    }));
+  }
+
+  function updatePrice(idx, val) {
+    const price = parseFloat(val);
+    setItems(items.map(function(it, i) {
+      if (i !== idx) return it;
+      return Object.assign({}, it, { totalPrice: isNaN(price) ? 0 : Math.max(0, price) });
+    }));
+  }
+
+  function removeLine(idx) {
+    setItems(items.filter(function(_, i) { return i !== idx; }));
+  }
+
+  const totalRevenue = items.reduce(function(s, it) { return s + (it.totalPrice || 0); }, 0);
+  const totalBuyCost = items.reduce(function(s, it) { return s + getBuyCost(it.itemId, it.qty); }, 0);
+  const totalProfit = totalRevenue - totalBuyCost;
+  const margin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+
+  // Stock validation
+  const stockIssues = items.filter(function(it) {
+    return it.qty > getStock(it.itemId);
+  });
+  const canSell = items.length > 0 && stockIssues.length === 0
+    && items.every(function(it) { return it.qty > 0 && it.totalPrice > 0; });
+
+  function recordSale() {
+    if (!canSell) return;
+    const cust = customers.find(function(c) { return c.id === custId; });
+    const customerName = cust ? cust.name : (walkInName.trim() || 'Walk-in');
+
+    // Decrement inventory
+    const newInv = inventory.map(function(inv) {
+      const used = items.find(function(it) { return it.itemId === inv.id; });
+      if (!used) return inv;
+      return Object.assign({}, inv, { qty: Math.max(0, inv.qty - used.qty) });
+    });
+    setInventory(newInv);
+
+    // Build sale items array with full line info
+    const saleItems = items.map(function(it) {
+      const inv = inventory.find(function(x) { return x.id === it.itemId; });
+      const ing = ingredients.find(function(x) { return x.id === it.itemId; });
+      const buyPrice = inv ? (inv.lastPrice || 0) : 0;
+      return {
+        id: it.itemId,
+        name: (ing || inv || {}).name || '(unknown)',
+        qty: it.qty,
+        totalPrice: it.totalPrice,
+        pricePerKg: it.qty > 0 ? Math.round((it.totalPrice / it.qty) * 100) / 100 : 0,
+        buyPricePerKg: buyPrice
+      };
+    });
+
+    const productLabel = items.length === 1
+      ? saleItems[0].name + ' (' + saleItems[0].qty + 'kg)'
+      : 'Direct sale: ' + items.length + ' items';
+
+    const newSale = {
+      id: uid(),
+      date: today(),
+      type: 'direct',
+      customerId: custId || null,
+      customerName: customerName,
+      customer: customerName,
+      product: productLabel,
+      cost: totalBuyCost,
+      total: totalRevenue,
+      totalRevenue: totalRevenue,
+      totalCost: totalBuyCost,
+      profit: totalProfit,
+      batchKg: items.reduce(function(s, it) { return s + it.qty; }, 0),
+      items: saleItems
+    };
+    setSales(sales.concat([newSale]));
+
+    // Stock ledger entry per line item
+    const ledger = db.get('stockLedger', []);
+    const ledgerEntries = saleItems.map(function(si) {
+      return {
+        id: uid(), type: 'DIRECT_SALE', date: today(),
+        itemId: si.id, itemName: si.name,
+        qty: si.qty, total: si.totalPrice,
+        customerName: customerName,
+        by: user ? user.name : ''
+      };
+    });
+    const newLedger = ledger.concat(ledgerEntries);
+    db.set('stockLedger', newLedger);
+    serverPush('stockLedger', newLedger);
+
+    // Reset form
+    setItems([]);
+    setCustId('');
+    setWalkInName('');
+    setPickerId('');
+    showT('Sale recorded. KES ' + totalRevenue.toFixed(2) + ' \u{2022} ' + saleItems.length + ' line(s).');
+  }
+
+  // Build picker options (alphabetical, in-stock first)
+  const pickerOptions = [{ value: '', label: 'Choose ingredient to add...' }].concat(
+    ingredients
+      .slice()
+      .sort(function(a, b) {
+        const sA = getStock(a.id), sB = getStock(b.id);
+        if (sA > 0 && sB <= 0) return -1;
+        if (sB > 0 && sA <= 0) return 1;
+        return a.name.localeCompare(b.name);
+      })
+      .map(function(i) {
+        const stock = getStock(i.id);
+        const sellP = getDefaultPrice(i.id, 1);
+        return {
+          value: i.id,
+          label: i.name + (stock > 0 ? ' \u{2022} ' + stock.toFixed(0) + 'kg \u{2022} KES ' + sellP + '/kg' : ' \u{2022} OUT OF STOCK'),
+          disabled: stock <= 0
+        };
+      })
+  );
+
+  return h('div', { style: { padding: '0 26px 26px' } },
+    toast ? h(Toast, { msg: toast.msg, type: toast.type }) : null,
+    h(PageHdr, {
+      title: '\u{1F6D2} Direct Sale',
+      subtitle: 'Sell raw ingredients without formulation'
+    }),
+    // Customer block
+    h(Card, { style: { marginBottom: 14 } },
+      h(CardTitle, null, '\u{1F464} Customer'),
+      h('div', { style: { padding: '0 18px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+        h(Sel, {
+          label: 'Existing Customer',
+          value: custId,
+          onChange: function(v) { setCustId(v); if (v) setWalkInName(''); },
+          options: [{ value: '', label: '— Walk-in / Not a regular —' }].concat(
+            customers.map(function(c) { return { value: c.id, label: c.name }; })
+          )
+        }),
+        h(Inp, {
+          label: 'Walk-in Name (optional)',
+          value: walkInName,
+          onChange: function(v) { setWalkInName(v); if (v) setCustId(''); },
+          placeholder: 'For receipts only'
+        })
+      )
+    ),
+    // Line items block
+    h(Card, { style: { marginBottom: 14 } },
+      h(CardTitle, null, '\u{1F4E6} Items'),
+      h('div', { style: { padding: '14px 18px' } },
+        // Picker row
+        h('div', { style: { display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 14 } },
+          h('div', { style: { flex: 1 } },
+            h(Sel, {
+              label: 'Add ingredient',
+              value: pickerId,
+              onChange: setPickerId,
+              options: pickerOptions
+            })
+          ),
+          h(Btn, {
+            onClick: addLine,
+            variant: 'success',
+            disabled: !pickerId,
+            style: { marginBottom: 12 }
+          }, '+ Add')
+        ),
+        // Items table
+        items.length === 0 ? h('div', {
+          style: { padding: 30, textAlign: 'center', color: C.muted, fontSize: 13, background: C.cream, borderRadius: 10 }
+        }, 'No items yet. Pick an ingredient above and click Add.') : h('div', null,
+          h('div', {
+            style: {
+              display: 'grid',
+              gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.2fr 40px',
+              gap: 8, padding: '6px 4px',
+              fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2,
+              color: C.muted, fontFamily: "'DM Mono',monospace",
+              borderBottom: '2px solid ' + C.border
+            }
+          },
+            h('div', null, 'Ingredient'),
+            h('div', { style: { textAlign: 'right' } }, 'In stock'),
+            h('div', { style: { textAlign: 'right' } }, 'Qty (kg)'),
+            h('div', { style: { textAlign: 'right' } }, 'Total Price KES'),
+            h('div', { style: { textAlign: 'right' } }, 'Per kg KES'),
+            h('div', null, '')
+          ),
+          items.map(function(it, idx) {
+            const inv = inventory.find(function(x) { return x.id === it.itemId; });
+            const ing = ingredients.find(function(x) { return x.id === it.itemId; });
+            const stock = getStock(it.itemId);
+            const overStock = it.qty > stock;
+            const perKg = it.qty > 0 ? (it.totalPrice / it.qty) : 0;
+            return h('div', {
+              key: it.itemId,
+              style: {
+                display: 'grid',
+                gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.2fr 40px',
+                gap: 8, padding: '8px 4px',
+                alignItems: 'center',
+                borderBottom: '1px solid ' + C.border,
+                background: overStock ? '#fde8e8' : 'white'
+              }
+            },
+              h('div', { style: { fontSize: 13, color: C.earth, fontWeight: 600 } },
+                (ing || inv || {}).name || '(unknown)'),
+              h('div', {
+                style: {
+                  textAlign: 'right', fontSize: 12,
+                  color: overStock ? C.danger : C.muted,
+                  fontFamily: "'DM Mono',monospace",
+                  fontWeight: overStock ? 700 : 400
+                }
+              }, stock.toFixed(1)),
+              h('input', {
+                type: 'number',
+                step: '0.1',
+                min: 0,
+                value: it.qty,
+                onChange: function(e) { updateQty(idx, e.target.value); },
+                style: {
+                  padding: '6px 8px',
+                  border: '1px solid ' + (overStock ? C.danger : C.border),
+                  borderRadius: 6,
+                  fontSize: 12,
+                  textAlign: 'right',
+                  fontFamily: "'DM Mono',monospace",
+                  width: '100%',
+                  background: 'white'
+                }
+              }),
+              h('input', {
+                type: 'number',
+                step: '0.01',
+                min: 0,
+                value: it.totalPrice,
+                onChange: function(e) { updatePrice(idx, e.target.value); },
+                style: {
+                  padding: '6px 8px',
+                  border: '1px solid ' + C.border,
+                  borderRadius: 6,
+                  fontSize: 12,
+                  textAlign: 'right',
+                  fontFamily: "'DM Mono',monospace",
+                  width: '100%',
+                  background: 'white',
+                  fontWeight: 700,
+                  color: C.grass
+                }
+              }),
+              h('div', {
+                style: {
+                  textAlign: 'right', fontSize: 11,
+                  color: C.muted, fontFamily: "'DM Mono',monospace"
+                }
+              }, perKg > 0 ? perKg.toFixed(2) : '-'),
+              h('button', {
+                onClick: function() { removeLine(idx); },
+                style: {
+                  border: 'none', background: 'transparent',
+                  color: C.danger, cursor: 'pointer', fontSize: 16
+                },
+                title: 'Remove'
+              }, '\u2715')
+            );
+          })
+        ),
+        // Stock issues warning
+        stockIssues.length > 0 ? h('div', {
+          style: {
+            marginTop: 12, padding: '10px 14px',
+            background: '#fde8e8', borderRadius: 8,
+            border: '1px solid ' + C.danger + '66',
+            fontSize: 12, color: C.danger
+          }
+        },
+          h('strong', null, '\u{26A0} Insufficient stock: '),
+          stockIssues.map(function(it) {
+            const ing = ingredients.find(function(x) { return x.id === it.itemId; });
+            return (ing || {}).name || '?';
+          }).join(', '),
+          '. Reduce quantity or restock first.'
+        ) : null
+      )
+    ),
+    // Totals + record button
+    items.length > 0 ? h(Card, { style: { marginBottom: 14 } },
+      h('div', {
+        style: {
+          padding: '14px 18px',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          gap: 14, flexWrap: 'wrap',
+          background: 'linear-gradient(135deg,' + C.parchment + ',' + C.cream + ')'
+        }
+      },
+        h('div', null,
+          h('div', { style: { fontSize: 11, color: C.muted, fontFamily: "'DM Mono',monospace", textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 } }, 'Total'),
+          h('div', { style: { fontSize: 28, fontFamily: "'Playfair Display',serif", fontWeight: 900, color: C.earth } },
+            'KES ' + totalRevenue.toFixed(2)),
+          h('div', { style: { fontSize: 11, color: C.muted, marginTop: 2 } },
+            'Buy cost ' + fmtKES(totalBuyCost) + ' \u{2022} Profit ',
+            h('strong', { style: { color: totalProfit >= 0 ? C.grass : C.danger } },
+              fmtKES(totalProfit) + ' (' + margin.toFixed(1) + '%)')
+          )
+        ),
+        h(Btn, {
+          onClick: recordSale,
+          variant: 'success',
+          size: 'lg',
+          disabled: !canSell
+        }, '\u{2713} Record Sale')
+      )
+    ) : null
+  );
+}
+
 // ========== PAGES COMPONENT ==========
 
 export default function Pages(props) {
@@ -4276,6 +4664,7 @@ export default function Pages(props) {
   const pageMap = {
     dashboard: function() { return h(DashboardPage, null); },
     formulator: function() { return h(FormulatorPage, { preload: preload }); },
+    direct_sale: function() { return h(DirectSalePage, null); },
     saved_formulas: function() {
       return h(SavedFormulasPage, {
         setPreload: setPreload,
