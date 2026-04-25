@@ -7,7 +7,8 @@ import {
   SEED_USERS, SEED_ANIMAL_REQS, SEED_INGREDIENT_PROFILES,
   CATEGORY_META, CATEGORY_ICONS, FEEDING_QTY, TIPS, SPECIES_RECS,
   getAnimalReqs, getAnimalCategories, buildSpeciesList, getStagesForCategory, getReqForStage,
-  ANF_DEFAULTS, getDefaultOverridesForSpecies, resolveMaxIncl
+  ANF_DEFAULTS, getDefaultOverridesForSpecies, resolveMaxIncl,
+  isIngredientAllowedForStage, getMandatoryRangeForStage, isIngredientPremix
 } from "./constants.js";
 import { solveLeastCost, solveLeastCostLP, solveBestEffort, suggestIngredientsToBuy, assessNutrientGaps, calcNutrients, calcCost } from "./solver.js";
 
@@ -1407,8 +1408,15 @@ function IngredientsPage() {
   const [toast, setToast] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [importStatus, setImportStatus] = useState(null);
-  const blank = { name: '', category: 'energy', cp: '', me: '', fat: '', fibre: '', ca: '', p: '', lys: '', met: '', maxIncl: '', nutritiveNote: '', antiNote: '' };
+  const blank = {
+    name: '', category: 'energy',
+    cp: '', me: '', fat: '', fibre: '', ca: '', p: '', lys: '', met: '',
+    maxIncl: '', nutritiveNote: '', antiNote: '',
+    restrictedTo: [],   // array of {category, stage}
+    mandatoryAt: []     // array of {category, stage, minPct, maxPct}
+  };
   const [form, setForm] = useState(blank);
+  const animalReqs = getAnimalReqs(db.get('animalReqs'));
 
   function showT(msg, type) {
     setToast({ msg: msg, type: type || 'success' });
@@ -1465,7 +1473,35 @@ function IngredientsPage() {
             return isNaN(n) ? 100 : Math.min(100, Math.max(0, n));
           })(),
           nutritiveNote: String(get(['nutritivenote', 'nutritivenotes', 'nutritive', 'benefits', 'notes']) || '').trim(),
-          antiNote: String(get(['antinote', 'antinutritivenote', 'antinutritivenotes', 'antinutritive', 'cautions', 'warnings']) || '').trim()
+          antiNote: String(get(['antinote', 'antinutritivenote', 'antinutritivenotes', 'antinutritive', 'cautions', 'warnings']) || '').trim(),
+          restrictedTo: (function() {
+            const raw = String(get(['restrictedto', 'restricted', 'allowedstages', 'usein']) || '').trim();
+            if (!raw) return [];
+            return raw.split(/[;\n]/).map(function(p) {
+              const parts = p.split('|').map(function(x) { return x.trim(); });
+              if (parts.length >= 2 && parts[0] && parts[1]) {
+                return { category: parts[0], stage: parts[1] };
+              }
+              return null;
+            }).filter(Boolean);
+          })(),
+          mandatoryAt: (function() {
+            const raw = String(get(['mandatoryat', 'mandatory', 'requiredat', 'forcedinclusion', 'lockedat']) || '').trim();
+            if (!raw) return [];
+            return raw.split(/[;\n]/).map(function(p) {
+              const parts = p.split('|').map(function(x) { return x.trim(); });
+              if (parts.length >= 4 && parts[0] && parts[1]) {
+                const minPct = Math.max(0, parseFloat(parts[2]) || 0);
+                const maxPct = Math.max(minPct, parseFloat(parts[3]) || minPct);
+                return { category: parts[0], stage: parts[1], minPct: minPct, maxPct: maxPct };
+              } else if (parts.length === 3 && parts[0] && parts[1]) {
+                // Fixed rate shorthand: Cat|Stage|N
+                const v = Math.max(0, parseFloat(parts[2]) || 0);
+                return { category: parts[0], stage: parts[1], minPct: v, maxPct: v };
+              }
+              return null;
+            }).filter(Boolean);
+          })()
         });
       });
       if (newIngredients.length === 0) {
@@ -1498,14 +1534,30 @@ function IngredientsPage() {
   }
 
   function downloadTemplate() {
-    const headers = ['Name', 'Category', 'CP %', 'ME kcal/kg', 'Fat %', 'Fibre %', 'Ca %', 'P %', 'Lys %', 'Met %', 'Max Inclusion %', 'Nutritive Note', 'Anti Note'];
+    const headers = [
+      'Name', 'Category', 'CP %', 'ME kcal/kg', 'Fat %', 'Fibre %', 'Ca %', 'P %', 'Lys %', 'Met %',
+      'Max Inclusion %', 'Nutritive Note', 'Anti Note',
+      'Restricted To', 'Mandatory At'
+    ];
     const sample = [
       ['Maize Grain', 'energy', 8.5, 3350, 3.8, 2.3, 0.02, 0.28, 0.24, 0.17, 70,
         'High-energy staple. Excellent palatability. Yellow varieties supply xanthophyll for egg yolk colour.',
-        'Susceptible to aflatoxin if poorly stored. Reject mouldy or musty grain. Limit to 70% in poultry mash.'],
+        'Susceptible to aflatoxin if poorly stored. Reject mouldy or musty grain. Limit to 70% in poultry mash.',
+        '', ''],
       ['Soybean Meal (44%)', 'protein', 44, 2230, 1.5, 6.5, 0.33, 0.65, 2.78, 0.64, 35,
         'Highest-quality plant protein. Excellent amino acid profile, especially lysine. Standard pairing with maize.',
-        'Raw soy contains trypsin inhibitors and must be heat-treated (toasted). Limit to 35% to avoid excess Lys/Met imbalance.']
+        'Raw soy contains trypsin inhibitors and must be heat-treated (toasted). Limit to 35% to avoid excess Lys/Met imbalance.',
+        '', ''],
+      ['Broiler Premix', 'mineral', 0, 0, 0, 0, 12, 8, 0, 0, 5,
+        'Vitamin/mineral premix for broilers. Supplies all micronutrients above what raw ingredients provide.',
+        'Use only in broiler rations. Do not exceed manufacturer rate.',
+        'Poultry (Broiler)|Broiler Starter (0-21 days); Poultry (Broiler)|Broiler Finisher (22+ days)',
+        'Poultry (Broiler)|Broiler Starter (0-21 days)|0.5|0.5; Poultry (Broiler)|Broiler Finisher (22+ days)|0.5|0.5'],
+      ['Layer Premix', 'mineral', 0, 0, 0, 0, 18, 6, 0, 0, 5,
+        'Vitamin/mineral premix for laying hens with calcium and phosphorus boost for shell quality.',
+        'Use only in layer rations.',
+        'Poultry (Layer)|Pre-Layer Mash (17-18 weeks); Poultry (Layer)|Layers Mash (18+ weeks)',
+        'Poultry (Layer)|Pre-Layer Mash (17-18 weeks)|0.5|0.5; Poultry (Layer)|Layers Mash (18+ weeks)|0.5|0.5']
     ];
     exportToExcel([headers].concat(sample), 'ingredients_import_template.xlsx', 'Ingredients');
   }
@@ -1525,6 +1577,15 @@ function IngredientsPage() {
       maxIncl: form.maxIncl === '' || form.maxIncl == null ? 100 : Math.min(100, Math.max(0, parseFloat(form.maxIncl) || 0)),
       nutritiveNote: (form.nutritiveNote || '').trim(),
       antiNote: (form.antiNote || '').trim(),
+      restrictedTo: Array.isArray(form.restrictedTo) ? form.restrictedTo.slice() : [],
+      mandatoryAt: Array.isArray(form.mandatoryAt) ? form.mandatoryAt.map(function(m) {
+        return {
+          category: m.category,
+          stage: m.stage,
+          minPct: Math.max(0, parseFloat(m.minPct) || 0),
+          maxPct: Math.max(parseFloat(m.minPct) || 0, parseFloat(m.maxPct) || (parseFloat(m.minPct) || 0))
+        };
+      }) : []
     });
     if (editing) {
       setIngredients(ingredients.map(function(i) { return i.id === editing.id ? newIng : i; }));
@@ -1656,6 +1717,153 @@ function IngredientsPage() {
       value: form.antiNote,
       onChange: function(v) { setForm(Object.assign({}, form, { antiNote: v })); }
     }),
+
+    // ── PREMIX SETTINGS ──
+    h('div', {
+      style: { marginTop: 18, padding: '12px 14px', background: '#fff8e8', border: '1px solid ' + C.warning + '44', borderRadius: 10 }
+    },
+      h('div', {
+        style: { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: C.warning, marginBottom: 6, letterSpacing: 0.8 }
+      }, '\u{1F510} Premix / Restricted-Use Settings (optional)'),
+      h('div', {
+        style: { fontSize: 11, color: C.muted, marginBottom: 12, lineHeight: 1.5 }
+      },
+        'For premixes, concentrates, or any ingredient that should only be used in specific species/stages. ',
+        h('strong', null, 'Leave blank for universal ingredients (maize, soya, etc.).')
+      ),
+
+      // Stage chooser — pick (category, stage) pairs
+      h('div', { style: { fontSize: 11, fontWeight: 700, color: C.earth, marginBottom: 6 } },
+        'Where can this ingredient be used?'),
+      h('div', { style: { fontSize: 10, color: C.muted, marginBottom: 8, fontStyle: 'italic' } },
+        'Tick the species/stages where this ingredient is allowed. None ticked = allowed everywhere.'),
+      h('div', {
+        style: {
+          maxHeight: 180, overflowY: 'auto', padding: '8px 10px',
+          background: 'white', border: '1px solid ' + C.border, borderRadius: 8,
+          marginBottom: 12
+        }
+      },
+        animalReqs.map(function(req) {
+          const key = req.category + '||' + req.stage;
+          const restrictedSet = new Set((form.restrictedTo || []).map(function(r) { return r.category + '||' + r.stage; }));
+          const mandSet = new Set((form.mandatoryAt || []).map(function(m) { return m.category + '||' + m.stage; }));
+          const checked = restrictedSet.has(key);
+          const isMandHere = mandSet.has(key);
+          return h('label', {
+            key: key,
+            style: {
+              display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0',
+              fontSize: 12, color: C.earth, cursor: 'pointer'
+            }
+          },
+            h('input', {
+              type: 'checkbox',
+              checked: checked,
+              onChange: function(e) {
+                const next = (form.restrictedTo || []).slice();
+                if (e.target.checked) {
+                  next.push({ category: req.category, stage: req.stage });
+                } else {
+                  const idx = next.findIndex(function(r) { return r.category === req.category && r.stage === req.stage; });
+                  if (idx >= 0) next.splice(idx, 1);
+                  // If we untick a stage, also remove its mandatory rule
+                  const newMand = (form.mandatoryAt || []).filter(function(m) {
+                    return !(m.category === req.category && m.stage === req.stage);
+                  });
+                  setForm(Object.assign({}, form, { restrictedTo: next, mandatoryAt: newMand }));
+                  return;
+                }
+                setForm(Object.assign({}, form, { restrictedTo: next }));
+              },
+              style: { width: 14, height: 14 }
+            }),
+            h('span', { style: { flex: 1 } }, req.category + ' \u2014 ' + req.stage),
+            isMandHere ? h('span', {
+              style: { fontSize: 10, padding: '1px 6px', background: '#fff4e0', color: C.warning, borderRadius: 8, fontWeight: 700 }
+            }, 'MANDATORY') : null
+          );
+        })
+      ),
+
+      // Mandatory inclusion rates — only show stages that are ticked
+      (form.restrictedTo && form.restrictedTo.length > 0) ? h('div', null,
+        h('div', { style: { fontSize: 11, fontWeight: 700, color: C.earth, marginBottom: 6 } },
+          'Mandatory inclusion rates (optional)'),
+        h('div', { style: { fontSize: 10, color: C.muted, marginBottom: 8, fontStyle: 'italic' } },
+          'For each ticked stage, set required inclusion %. Set the same value in min and max to lock to a fixed rate (e.g. 0.5%). Leave blank to keep it optional in that stage.'),
+        h('div', {
+          style: {
+            background: 'white', border: '1px solid ' + C.border, borderRadius: 8,
+            padding: '8px 10px'
+          }
+        },
+          form.restrictedTo.map(function(r) {
+            const key = r.category + '||' + r.stage;
+            const existing = (form.mandatoryAt || []).find(function(m) { return m.category === r.category && m.stage === r.stage; });
+            return h('div', {
+              key: key,
+              style: {
+                display: 'grid', gridTemplateColumns: '1fr 70px 70px 60px',
+                gap: 8, alignItems: 'center', padding: '5px 0',
+                fontSize: 12, color: C.earth, borderBottom: '1px solid ' + C.border + '88'
+              }
+            },
+              h('div', { style: { fontSize: 11 } }, r.category + ' \u2014 ' + r.stage),
+              h('input', {
+                type: 'number', step: '0.1', min: 0, max: 100,
+                placeholder: 'Min %',
+                value: existing ? existing.minPct : '',
+                onChange: function(e) {
+                  const val = e.target.value;
+                  const next = (form.mandatoryAt || []).slice();
+                  const idx = next.findIndex(function(m) { return m.category === r.category && m.stage === r.stage; });
+                  if (val === '' || val == null) {
+                    // empty — remove rule
+                    if (idx >= 0) next.splice(idx, 1);
+                  } else {
+                    if (idx >= 0) {
+                      next[idx] = Object.assign({}, next[idx], { minPct: parseFloat(val) || 0 });
+                    } else {
+                      next.push({ category: r.category, stage: r.stage, minPct: parseFloat(val) || 0, maxPct: parseFloat(val) || 0 });
+                    }
+                  }
+                  setForm(Object.assign({}, form, { mandatoryAt: next }));
+                },
+                style: { padding: '4px 6px', border: '1px solid ' + C.border, borderRadius: 4, fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right' }
+              }),
+              h('input', {
+                type: 'number', step: '0.1', min: 0, max: 100,
+                placeholder: 'Max %',
+                value: existing ? existing.maxPct : '',
+                onChange: function(e) {
+                  const val = e.target.value;
+                  const next = (form.mandatoryAt || []).slice();
+                  const idx = next.findIndex(function(m) { return m.category === r.category && m.stage === r.stage; });
+                  if (val === '' || val == null) {
+                    if (idx >= 0) {
+                      next[idx] = Object.assign({}, next[idx], { maxPct: next[idx].minPct });
+                    }
+                  } else {
+                    if (idx >= 0) {
+                      next[idx] = Object.assign({}, next[idx], { maxPct: parseFloat(val) || 0 });
+                    } else {
+                      next.push({ category: r.category, stage: r.stage, minPct: parseFloat(val) || 0, maxPct: parseFloat(val) || 0 });
+                    }
+                  }
+                  setForm(Object.assign({}, form, { mandatoryAt: next }));
+                },
+                style: { padding: '4px 6px', border: '1px solid ' + C.border, borderRadius: 4, fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right' }
+              }),
+              h('span', { style: { fontSize: 10, color: C.muted, fontStyle: 'italic' } },
+                existing && existing.minPct === existing.maxPct && existing.minPct > 0 ? 'Fixed' :
+                  existing && existing.minPct > 0 ? 'Range' : 'Optional')
+            );
+          })
+        )
+      ) : null
+    ),
+
     h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
       h(Btn, { onClick: function() { setShowForm(false); setEditing(null); }, variant: 'secondary' }, 'Cancel'),
       h(Btn, { onClick: saveIng, variant: 'success' }, editing ? 'Update Ingredient' : 'Add Ingredient')
@@ -1852,7 +2060,10 @@ function FormulatorPage(props) {
 
   const availableIngredients = ingredients.filter(function(i) {
     const inv = inventory.find(function(x) { return x.id === i.id; });
-    return inv && inv.qty > 0;
+    if (!inv || inv.qty <= 0) return false;
+    // Exclude ingredients restricted away from current species/stage
+    if (species && stage && !isIngredientAllowedForStage(i, species, stage)) return false;
+    return true;
   });
 
   const [selIngrs, setSelIngrs] = useState(function() {
@@ -1867,6 +2078,27 @@ function FormulatorPage(props) {
     setSelIngrs(new Set(available.map(function(i) { return i.id; })));
   }, [inventory.length]);
 
+  // When species/stage changes, auto-add mandatory ingredients to the selection
+  // and remove ingredients that are restricted away from this stage.
+  useEffect(function() {
+    if (!species || !stage) return;
+    setSelIngrs(function(prev) {
+      const next = new Set(prev);
+      ingredients.forEach(function(i) {
+        const allowed = isIngredientAllowedForStage(i, species, stage);
+        const mand = getMandatoryRangeForStage(i, species, stage);
+        if (!allowed) {
+          // Restricted away from this stage — drop from selection
+          if (next.has(i.id)) next.delete(i.id);
+        } else if (mand) {
+          // Mandatory at this stage — ensure it's selected
+          if (!next.has(i.id)) next.add(i.id);
+        }
+      });
+      return next;
+    });
+  }, [species, stage, ingredients.length]);
+
   function getSellPriceForIng(ing) {
     const inv = inventory.find(function(x) { return x.id === ing.id; });
     if (inv) {
@@ -1879,11 +2111,28 @@ function FormulatorPage(props) {
   function getActiveWithANF() {
     const currentReq = (species && stage) ? getReqForStage(animalReqs, species, stage) : null;
     return ingredients.filter(function(i) { return selIngrs.has(i.id); }).map(function(i) {
+      // Premix gate: if this ingredient is restricted, drop it when the current
+      // (species, stage) isn't in its allow-list.
+      if (species && stage && !isIngredientAllowedForStage(i, species, stage)) {
+        return null;
+      }
       const base = Object.assign({}, i, { price: getSellPriceForIng(i) });
+      // Mandatory inclusion: if this ingredient must be present at the current stage,
+      // bake the rule into minIncl/maxIncl so the solver enforces it as bounds.
+      if (species && stage) {
+        const mand = getMandatoryRangeForStage(i, species, stage);
+        if (mand) {
+          base.minIncl = mand.minPct;
+          base.maxIncl = Math.min(parseFloat(base.maxIncl) || 100, mand.maxPct);
+        }
+      }
       if (species) {
         const effMax = getEffectiveMaxIncl(base, species, currentReq);
         if (effMax === 0) return null;
-        return Object.assign({}, base, { maxIncl: Math.min(base.maxIncl || 100, effMax) });
+        const newMax = Math.min(base.maxIncl || 100, effMax);
+        // If a mandatory minimum exceeds the resolved maxIncl, the situation is infeasible.
+        // We still pass it through; the solver / infeasible card will surface the conflict.
+        return Object.assign({}, base, { maxIncl: newMax });
       }
       return base;
     }).filter(Boolean);
@@ -2261,45 +2510,91 @@ function FormulatorPage(props) {
 
   // Ingredient selection cards
   const ingCards = ingredients.map(function(ing) {
+    // Hide ingredients restricted to other stages entirely
+    if (species && stage && !isIngredientAllowedForStage(ing, species, stage)) {
+      return null;
+    }
     const inv = inventory.find(function(x) { return x.id === ing.id; });
     const hasStock = inv && inv.qty > 0;
     const sel = selIngrs.has(ing.id);
     const anfStat = getANFStatus(ing.id);
-    const baseStyle = sel
-      ? { border: '2px solid ' + C.grass, background: '#f0f9f4' }
-      : Object.assign({}, anfStatusStyle(anfStat), { opacity: hasStock ? 1 : 0.45 });
+    const mand = (species && stage) ? getMandatoryRangeForStage(ing, species, stage) : null;
+    const isMand = !!mand;
+    const isPrem = isIngredientPremix(ing);
+    const baseStyle = isMand
+      ? { border: '2px solid ' + C.warning, background: '#fff4e0' }
+      : (sel
+        ? { border: '2px solid ' + C.grass, background: '#f0f9f4' }
+        : Object.assign({}, anfStatusStyle(anfStat), { opacity: hasStock ? 1 : 0.45 }));
     const cardStyle = Object.assign({
       padding: '9px 11px',
       borderRadius: 10,
-      cursor: hasStock ? 'pointer' : 'not-allowed',
+      cursor: isMand ? 'not-allowed' : (hasStock ? 'pointer' : 'not-allowed'),
       userSelect: 'none',
       transition: 'all 0.15s',
       position: 'relative'
     }, baseStyle);
-    const indicator = sel ? h('div', {
-      style: { position: 'absolute', top: 5, right: 7, fontSize: 11, color: C.grass, fontWeight: 700 }
-    }, '\u{2713}') : anfStat === 'excluded' ? h('div', {
-      style: { position: 'absolute', top: 5, right: 7, fontSize: 11, color: C.danger, fontWeight: 700 }
-    }, '\u{2717}') : anfStat === 'caution' ? h('div', {
-      style: { position: 'absolute', top: 5, right: 7, fontSize: 11, color: C.warning, fontWeight: 700 }
-    }, '!') : null;
+    let indicator = null;
+    if (isMand) {
+      indicator = h('div', {
+        style: { position: 'absolute', top: 5, right: 7, fontSize: 9, color: C.warning, fontWeight: 700, letterSpacing: 0.5 }
+      }, '\u{1F510} REQ');
+    } else if (sel) {
+      indicator = h('div', {
+        style: { position: 'absolute', top: 5, right: 7, fontSize: 11, color: C.grass, fontWeight: 700 }
+      }, '\u{2713}');
+    } else if (anfStat === 'excluded') {
+      indicator = h('div', {
+        style: { position: 'absolute', top: 5, right: 7, fontSize: 11, color: C.danger, fontWeight: 700 }
+      }, '\u{2717}');
+    } else if (anfStat === 'caution') {
+      indicator = h('div', {
+        style: { position: 'absolute', top: 5, right: 7, fontSize: 11, color: C.warning, fontWeight: 700 }
+      }, '!');
+    }
     const stockText = hasStock
       ? fmt(inv.qty) + ' kg  \u{2022}  KES ' + getSellPriceForIng(ing) + '/kg'
       : 'Out of stock';
+    const mandText = isMand
+      ? (mand.minPct === mand.maxPct
+          ? 'Required at ' + mand.minPct + '%'
+          : 'Required ' + mand.minPct + '\u2013' + mand.maxPct + '%')
+      : null;
+    const premBadge = isPrem ? h('span', {
+      style: {
+        display: 'inline-block', marginLeft: 4, padding: '0 5px',
+        background: '#e8d5b7', color: '#5C3D2E',
+        borderRadius: 4, fontSize: 9, fontWeight: 700, verticalAlign: 'middle'
+      }
+    }, 'PREMIX') : null;
+    const compoundBadge = (ing.category === 'compound_feed') ? h('span', {
+      style: {
+        display: 'inline-block', marginLeft: 4, padding: '0 5px',
+        background: '#e7defa', color: '#5d3f9b',
+        border: '1px solid #b39ddb',
+        borderRadius: 4, fontSize: 9, fontWeight: 700, verticalAlign: 'middle'
+      }
+    }, '\u{1F4E6} COMPLETE FEED') : null;
     return h('div', {
       key: ing.id,
-      onClick: function() { if (hasStock) toggleI(ing.id); },
+      onClick: function() {
+        if (isMand) return;          // can't deselect mandatory ingredients
+        if (hasStock) toggleI(ing.id);
+      },
       style: cardStyle
     },
       indicator,
       h('div', {
-        style: { fontSize: 12, fontWeight: 600, color: C.earth, lineHeight: 1.3, marginRight: 18 }
-      }, ing.name),
+        style: { fontSize: 12, fontWeight: 600, color: C.earth, lineHeight: 1.3, marginRight: 32 }
+      }, ing.name, compoundBadge, premBadge),
       h('div', {
         style: { fontSize: 10, color: C.muted, marginTop: 3, fontFamily: "'DM Mono',monospace" }
-      }, stockText)
+      }, stockText),
+      mandText ? h('div', {
+        style: { fontSize: 10, color: C.warning, marginTop: 2, fontWeight: 700 }
+      }, mandText) : null
     );
-  });
+  }).filter(Boolean);
 
   const saveModal = showSave ? h(Modal, {
     title: 'Save Formula',

@@ -39,7 +39,14 @@ function setAnimalReqsPersist(v) { db.set("animalReqs", v); serverPush("animalRe
 // Seed functions
 function seedIngredients() {
   const stored = db.get("ingredients");
-  return stored && stored.length > 0 ? stored : SEED_INGREDIENT_PROFILES;
+  if (!stored || stored.length === 0) return SEED_INGREDIENT_PROFILES;
+  // Auto-merge: if SEED_INGREDIENT_PROFILES has any items not in stored (e.g.
+  // newly added compound feeds in an app update), append them so existing
+  // users get the new options without losing their customisations.
+  const existingIds = new Set(stored.map(i => i.id));
+  const missing = SEED_INGREDIENT_PROFILES.filter(i => !existingIds.has(i.id));
+  if (missing.length === 0) return stored;
+  return stored.concat(missing);
 }
 function seedInventory(ingrs) {
   const stored = db.get("inventory");

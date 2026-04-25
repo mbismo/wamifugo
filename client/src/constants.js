@@ -26,10 +26,11 @@ export const CATEGORY_ICONS = {
 };
 
 export const CATEGORY_META = [
-  {key:'energy',  label:'Energy Sources',   color:'#C9922A', icon:'⚡'},
-  {key:'protein', label:'Protein Sources',  color:'#4A7C59', icon:'🥩'},
-  {key:'mineral', label:'Minerals',         color:'#8B5E3C', icon:'🦴'},
-  {key:'additive',label:'Additives',        color:'#5C3D2E', icon:'💊'},
+  {key:'energy',        label:'Energy Sources',    color:'#C9922A', icon:'⚡'},
+  {key:'protein',       label:'Protein Sources',   color:'#4A7C59', icon:'🥩'},
+  {key:'mineral',       label:'Minerals',          color:'#8B5E3C', icon:'🦴'},
+  {key:'additive',      label:'Additives',         color:'#5C3D2E', icon:'💊'},
+  {key:'compound_feed', label:'Compound Feeds',    color:'#7B5BAB', icon:'📦'},
 ];
 
 export const SEED_INGREDIENT_PROFILES = [
@@ -392,6 +393,227 @@ export const SEED_INGREDIENT_PROFILES = [
     "maxIncl": 40.0,
     "category": "energy",
     "unit": "kg"
+  },
+
+  // ─── BELMILL COMPOUND FEEDS ───────────────────────────────────────────
+  // Restricted to specific species/stages. Solver will use them at any rate
+  // (0–100%) it finds cost-optimal while still hitting nutrient targets.
+  // Industry-standard nutrient profiles; adjust to your supplier's spec sheet.
+  {
+    "id": "feed_broiler_starter",
+    "name": "Belmill Broiler Starter",
+    "price": 75.0, "cp": 22.0, "me": 3000.0,
+    "fat": 5.5, "fibre": 4.0, "ca": 1.0, "p": 0.50,
+    "lys": 1.30, "met": 0.55, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "Complete starter feed for broiler chicks, day-old to 21 days. Fortified with coccidiostat, vitamins, amino acids, enzymes.",
+    "antiNote": "Use within 4-6 weeks of purchase. Store cool and dry. Do not feed to layers (contains coccidiostat unsuitable for laying hens).",
+    "restrictedTo": [
+      { "category": "Poultry (Broiler)", "stage": "Starter (0-21 days)" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_broiler_finisher",
+    "name": "Belmill Broiler Finisher",
+    "price": 72.0, "cp": 20.0, "me": 3125.0,
+    "fat": 7.5, "fibre": 4.0, "ca": 0.90, "p": 0.45,
+    "lys": 1.10, "met": 0.47, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "Complete finisher feed for broilers from 22 days to slaughter. Optimised for max body-weight gain with controlled fat.",
+    "antiNote": "Withdraw 5 days before slaughter if coccidiostat is used. Store cool and dry.",
+    "restrictedTo": [
+      { "category": "Poultry (Broiler)", "stage": "Grower (22-35 days)" },
+      { "category": "Poultry (Broiler)", "stage": "Finisher (36+ days)" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_chick_mash",
+    "name": "Belmill Chick Mash",
+    "price": 78.0, "cp": 20.0, "me": 2950.0,
+    "fat": 5.0, "fibre": 4.0, "ca": 1.0, "p": 0.50,
+    "lys": 1.10, "met": 0.50, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "For layer chicks day-old to 8 weeks. Builds digestive tract and immune system; rapid skeletal growth.",
+    "antiNote": "Use within 6 weeks of purchase.",
+    "restrictedTo": [
+      { "category": "Poultry (Layer)", "stage": "Chick Starter (0-8 wks)" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_growers_mash",
+    "name": "Belmill Growers Mash",
+    "price": 65.0, "cp": 15.0, "me": 2825.0,
+    "fat": 4.5, "fibre": 5.0, "ca": 0.95, "p": 0.45,
+    "lys": 0.78, "met": 0.35, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "For pullets 8-17 weeks. Controlled growth toward 1.5 kg target body weight at point of lay.",
+    "antiNote": "Underweight or overweight birds at point of lay reduce lifetime egg production.",
+    "restrictedTo": [
+      { "category": "Poultry (Layer)", "stage": "Grower (8-16 wks)" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_pre_layer",
+    "name": "Belmill Pre-Layer Mash",
+    "price": 70.0, "cp": 16.5, "me": 2825.0,
+    "fat": 4.5, "fibre": 4.0, "ca": 2.25, "p": 0.45,
+    "lys": 0.83, "met": 0.40, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "Bridge feed weeks 17-18. Calcium ramp-up builds medullary bone reserve before first egg.",
+    "antiNote": "Switch fully to Layers Mash once flock production exceeds 5%.",
+    "restrictedTo": [
+      { "category": "Poultry (Layer)", "stage": "Pre-lay (16-20 wks)" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_layers_mash",
+    "name": "Belmill Layers Mash",
+    "price": 75.0, "cp": 17.0, "me": 2775.0,
+    "fat": 4.5, "fibre": 4.0, "ca": 3.85, "p": 0.43,
+    "lys": 0.88, "met": 0.42, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "Sustains egg production through 85-89 weeks. High calcium for shell strength, methionine for egg size.",
+    "antiNote": "Provide oyster shell or limestone grit in addition for older hens.",
+    "restrictedTo": [
+      { "category": "Poultry (Layer)", "stage": "In Production (20+ wks)" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_calf_weaner",
+    "name": "Belmill Calf Weaner Pellets",
+    "price": 95.0, "cp": 20.0, "me": 2800.0,
+    "fat": 4.5, "fibre": 6.0, "ca": 0.85, "p": 0.48,
+    "lys": 0.73, "met": 0.30, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "Pelleted weaner feed. Encourages rumen development; eases transition off whole milk in 8 weeks.",
+    "antiNote": "Use alongside fresh roughage (hay/forage) from week 2.",
+    "restrictedTo": [
+      { "category": "Dairy Cattle", "stage": "Calf (0-3 months)" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_heifer_meal",
+    "name": "Belmill Young Stock / Heifer Meal",
+    "price": 60.0, "cp": 15.0, "me": 2500.0,
+    "fat": 3.8, "fibre": 12.5, "ca": 0.65, "p": 0.40,
+    "lys": 0.50, "met": 0.22, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "Steady growth toward target service weight (~280-320 kg). Supplemental concentrate alongside pasture/forage.",
+    "antiNote": "Provide quality forage as the base of the diet.",
+    "restrictedTo": [
+      { "category": "Dairy Cattle", "stage": "Heifer (3-12 months)" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_dairy_meal",
+    "name": "Belmill Dairy Meal",
+    "price": 65.0, "cp": 17.0, "me": 2600.0,
+    "fat": 4.0, "fibre": 10.5, "ca": 0.85, "p": 0.48,
+    "lys": 0.60, "met": 0.24, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "Standard ration for lactating cows. Yeast culture and toxin binders condition the rumen and improve feed efficacy.",
+    "antiNote": "Feed at ~0.4 kg per litre milk produced + 2 kg base. Quality forage essential.",
+    "restrictedTo": [
+      { "category": "Dairy Cattle", "stage": "Lactating (High Prod.)" },
+      { "category": "Dairy Cattle", "stage": "Dry Cow" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_super_dairy",
+    "name": "Belmill Super Dairy Meal",
+    "price": 78.0, "cp": 19.0, "me": 2800.0,
+    "fat": 5.0, "fibre": 8.5, "ca": 0.97, "p": 0.52,
+    "lys": 0.70, "met": 0.26, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "Pelleted high-energy diet for cows yielding 15+ litres/day. Yea-Sacc yeast and gelatinised processing improve digestibility.",
+    "antiNote": "Higher cost per kg than standard dairy meal — most economic for high-yielding cows only.",
+    "restrictedTo": [
+      { "category": "Dairy Cattle", "stage": "Lactating (High Prod.)" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_ranch_cubes",
+    "name": "Belmill Ranch Cubes",
+    "price": 55.0, "cp": 13.0, "me": 2500.0,
+    "fat": 3.5, "fibre": 11.0, "ca": 0.65, "p": 0.40,
+    "lys": 0.50, "met": 0.20, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "Multi-purpose cubes for ranch cattle: maintenance, fattening, drought supplement. Vitamins, minerals, molasses.",
+    "antiNote": "Adjust feeding rate to use case: maintenance 2-4 kg/day, fattening 4-6 kg/day, drought 1-2.5 kg/day.",
+    "restrictedTo": [
+      { "category": "Beef Cattle", "stage": "Weaner (3-6 months)" },
+      { "category": "Beef Cattle", "stage": "Grower (6-12 months)" },
+      { "category": "Beef Cattle", "stage": "Finisher (12+ months)" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_creep_pellets",
+    "name": "Belmill Creep Pellets",
+    "price": 110.0, "cp": 21.0, "me": 3400.0,
+    "fat": 5.5, "fibre": 4.0, "ca": 0.95, "p": 0.72,
+    "lys": 1.40, "met": 0.45, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "Bridges piglets from milk to solid feed (week 2 to weaning). Builds digestive enzymes for solid feed transition.",
+    "antiNote": "Highest cost feed in the pig programme. Use only as creep — switch to Sow & Weaner at weaning.",
+    "restrictedTo": [
+      { "category": "Swine", "stage": "Starter (<25 kg)" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_sow_weaner",
+    "name": "Belmill Sow & Weaner Meal",
+    "price": 72.0, "cp": 17.0, "me": 3200.0,
+    "fat": 4.5, "fibre": 5.5, "ca": 0.80, "p": 0.62,
+    "lys": 0.97, "met": 0.32, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "All-round ration for weaners 8w-60kg, breeding gilts, pregnant and lactating sows.",
+    "antiNote": "Different daily intake by stage — weaners 1-2.5 kg, sows 2.5-3.5 kg, lactating sows up to 6.5 kg/day.",
+    "restrictedTo": [
+      { "category": "Swine", "stage": "Starter (<25 kg)" },
+      { "category": "Swine", "stage": "Grower (25-60 kg)" },
+      { "category": "Swine", "stage": "Lactating Sow" }
+    ],
+    "mandatoryAt": []
+  },
+  {
+    "id": "feed_pig_finisher",
+    "name": "Belmill Pig Finisher",
+    "price": 70.0, "cp": 15.0, "me": 3250.0,
+    "fat": 4.5, "fibre": 5.5, "ca": 0.65, "p": 0.52,
+    "lys": 0.82, "met": 0.26, "moisture": 11.0,
+    "minIncl": 0, "maxIncl": 100,
+    "category": "compound_feed", "unit": "kg",
+    "nutritiveNote": "Fast finishing 60kg to market with maximum lean gain and minimum back fat.",
+    "antiNote": "Restrict to 3 kg/day max to control back fat.",
+    "restrictedTo": [
+      { "category": "Swine", "stage": "Finisher (>60 kg)" }
+    ],
+    "mandatoryAt": []
   }
 ];
 
@@ -1435,3 +1657,47 @@ export function resolveMaxIncl(ing, req, species) {
   }
   return Math.max(0, Math.min(ingCap, stageCap, 100));
 }
+
+// ── PREMIX / RESTRICTED-USE INGREDIENT HELPERS ─────────────────────────────
+// Ingredients may carry two optional fields:
+//   restrictedTo: [{category, stage}, ...]   — only allowed in these (cat,stage) pairs
+//                                              empty/missing = universal (default)
+//   mandatoryAt:  [{category, stage, minPct, maxPct}, ...]
+//                                              when present, force inclusion at min..max%
+//                                              when min == max, locks to a fixed %
+
+// Check if an ingredient is allowed in the given (category, stage).
+// Universal ingredients (no restrictedTo) are always allowed.
+export function isIngredientAllowedForStage(ing, category, stage) {
+  if (!ing || !ing.restrictedTo || !Array.isArray(ing.restrictedTo) || ing.restrictedTo.length === 0) {
+    return true;
+  }
+  return ing.restrictedTo.some(function(r) {
+    return r && r.category === category && r.stage === stage;
+  });
+}
+
+// Returns { minPct, maxPct } if the ingredient is mandatory at the given (category, stage),
+// otherwise null. Used by the solver to set lower/upper bounds on this ingredient's inclusion.
+export function getMandatoryRangeForStage(ing, category, stage) {
+  if (!ing || !ing.mandatoryAt || !Array.isArray(ing.mandatoryAt) || ing.mandatoryAt.length === 0) {
+    return null;
+  }
+  const match = ing.mandatoryAt.find(function(m) {
+    return m && m.category === category && m.stage === stage;
+  });
+  if (!match) return null;
+  const minPct = Math.max(0, Number(match.minPct) || 0);
+  const maxPct = Math.max(minPct, Math.min(100, Number(match.maxPct) || minPct));
+  return { minPct: minPct, maxPct: maxPct };
+}
+
+// Returns true if this ingredient has any premix rules configured at all.
+// Used by the UI to decide whether to show the "premix" badge.
+export function isIngredientPremix(ing) {
+  if (!ing) return false;
+  const hasRestrict = Array.isArray(ing.restrictedTo) && ing.restrictedTo.length > 0;
+  const hasMandatory = Array.isArray(ing.mandatoryAt) && ing.mandatoryAt.length > 0;
+  return hasRestrict || hasMandatory;
+}
+
