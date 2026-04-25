@@ -143,21 +143,30 @@ function solveStrictLP(ingrs, reqs) {
     }
   }
 
-  // Try LP first (fast path when it works)
+  // Run BOTH LP and coordinate descent when feasibility looks possible,
+  // then take the cheaper feasible result. LP is provably cost-optimal in the
+  // typical case, but the LP can occasionally settle on a numerically
+  // suboptimal vertex; CD acts as a cross-check.
+  let lpResult = null;
   if (!impossiblePrecheck) {
-    const lpResult = tryLPSolve(ingrs, reqs);
-    if (lpResult && verifyFeasible(lpResult.formula, ingrs, reqs)) {
-      return { formula: lpResult.formula, cost: lpResult.cost };
-    }
+    lpResult = tryLPSolve(ingrs, reqs);
+    if (lpResult && !verifyFeasible(lpResult.formula, ingrs, reqs)) lpResult = null;
   }
 
   // ALWAYS run coordinate descent to populate best-effort formula,
   // even when pre-check says impossible. This ensures the UI always
   // has a diagnosticFormula to show the user.
   const cdResult = coordinateDescentSearch(ingrs, reqs);
-  if (cdResult && cdResult.formula && verifyFeasible(cdResult.formula, ingrs, reqs)) {
-    return { formula: cdResult.formula, cost: cdResult.cost };
+  const cdFeasible = cdResult && cdResult.formula && verifyFeasible(cdResult.formula, ingrs, reqs);
+
+  // If both feasible, pick cheaper. If only one, return that.
+  if (lpResult && cdFeasible) {
+    return (cdResult.cost < lpResult.cost - 1e-4)
+      ? { formula: cdResult.formula, cost: cdResult.cost }
+      : { formula: lpResult.formula, cost: lpResult.cost };
   }
+  if (lpResult) return { formula: lpResult.formula, cost: lpResult.cost };
+  if (cdFeasible) return { formula: cdResult.formula, cost: cdResult.cost };
 
   // Infeasible — return best-effort diagnostic from coordinate descent
   return {
@@ -208,10 +217,12 @@ function verifyFeasible(formula, ingrs, reqs) {
     if (val < req[0] * (1 - tol)) return false;
     if (val > req[1] * (1 + tol)) return false;
   }
-  // Verify maxIncl bounds
+  // Verify min/max inclusion bounds
   for (const ing of ingrs) {
     const p = formula[ing.id] || 0;
     if (p > (parseFloat(ing.maxIncl) || 100) + 0.5) return false;
+    const lo = parseFloat(ing.minIncl) || 0;
+    if (lo > 0 && p < lo - 0.5) return false;
   }
   // Verify sum
   const sum = Object.values(formula).reduce(function(s, v) { return s + v; }, 0);
@@ -244,7 +255,7 @@ function tryLPSolve(ingrs, reqs) {
       b_ub.push(reqMax / scale);
     }
   });
-  const lb = new Array(n).fill(0);
+  const lb = ingrs.map(function(i) { return Math.max(0, parseFloat(i.minIncl) || 0); });
   const ub = ingrs.map(function(i) { return Math.min(parseFloat(i.maxIncl) || 100, 100); });
 
   try {
@@ -252,7 +263,13 @@ function tryLPSolve(ingrs, reqs) {
     if (!res || !res.x || !res.feasible) return null;
     const formula = {};
     for (let i = 0; i < n; i++) {
-      if (res.x[i] > 0.05) formula[ingrs[i].id] = res.x[i];
+      // Tight threshold (0.005%) preserves trace ingredients that are part
+      // of the cost-optimal mix. Forced-inclusion ingredients (minIncl > 0)
+      // are always kept regardless of how small they are.
+      const lo = parseFloat(ingrs[i].minIncl) || 0;
+      if (res.x[i] > 0.005 || lo > 0) {
+        formula[ingrs[i].id] = res.x[i];
+      }
     }
     normalizeTo100(formula);
     return { formula: formula, cost: calcCost(formula, ingrs) };
@@ -316,7 +333,7 @@ function coordinateDescentSearch(ingrs, reqs) {
       // If feasible, record and try to improve cost
       if (penalty.violation < 1e-6) {
         const formula = {};
-        for (let i = 0; i < n; i++) if (x[i] > 0.05) formula[ingrs[i].id] = x[i];
+        for (let i = 0; i < n; i++) if (x[i] > 0.005 || (parseFloat(ingrs[i].minIncl) || 0) > 0) formula[ingrs[i].id] = x[i];
         normalizeTo100(formula);
         if (verifyFeasible(formula, ingrs, reqs)) {
           const c = calcCost(formula, ingrs);
@@ -333,11 +350,14 @@ function coordinateDescentSearch(ingrs, reqs) {
       for (const delta of steps) {
         for (let i = 0; i < n; i++) {
           if (x[i] < 0.01) continue;
+          const iMin = parseFloat(ingrs[i].minIncl) || 0;
           for (let j = 0; j < n; j++) {
             if (i === j) continue;
             const jCap = parseFloat(ingrs[j].maxIncl) || 100;
             const jBound = Math.min(jCap, 100);
-            const d = Math.min(delta, x[i], jBound - x[j]);
+            // Clamp delta so we don't drop i below its minIncl
+            const maxFromI = Math.max(0, x[i] - iMin);
+            const d = Math.min(delta, maxFromI, jBound - x[j]);
             if (d < 0.01) continue;
             x[i] -= d; x[j] += d;
             const newPen = computePenalty(x, ingrs, reqs, activeNuts);
@@ -362,7 +382,7 @@ function coordinateDescentSearch(ingrs, reqs) {
   let bestEffortFormula = null;
   if (bestEffortX) {
     bestEffortFormula = {};
-    for (let i = 0; i < n; i++) if (bestEffortX[i] > 0.05) bestEffortFormula[ingrs[i].id] = bestEffortX[i];
+    for (let i = 0; i < n; i++) if (bestEffortX[i] > 0.005 || (parseFloat(ingrs[i].minIncl) || 0) > 0) bestEffortFormula[ingrs[i].id] = bestEffortX[i];
     normalizeTo100(bestEffortFormula);
   }
 
@@ -379,32 +399,40 @@ function generateStartingPoints(ingrs, reqs, activeNuts) {
   const n = ingrs.length;
   const points = [];
 
-  // 1. Uniform allocation
-  const uniform = new Array(n).fill(0);
-  let rem = 100;
+  // Pre-allocate the minIncl floor for each ingredient (mandatory premixes etc.)
+  const mins = ingrs.map(function(i) { return Math.max(0, parseFloat(i.minIncl) || 0); });
+  const minSum = mins.reduce(function(a, b) { return a + b; }, 0);
+  // If forced minimums already exceed 100%, the problem is infeasible — return one point for solver to surface error
+  if (minSum > 100) {
+    return [mins.slice()];
+  }
+  const freeShare = 100 - minSum;
+
+  // 1. Uniform allocation across the free share, layered on top of minIncl floor
+  const uniform = mins.slice();
+  let rem = freeShare;
   for (let i = 0; i < n; i++) {
     const cap = Math.min(parseFloat(ingrs[i].maxIncl) || 100, 100);
-    const share = Math.min(cap, 100 / n);
-    uniform[i] = share;
+    const headroom = Math.max(0, cap - uniform[i]);
+    const share = Math.min(headroom, freeShare / n);
+    uniform[i] += share;
     rem -= share;
   }
-  // Distribute remainder
   if (rem > 0.01) distributeRemainder(uniform, rem, ingrs);
   points.push(uniform);
 
   // 2. Skewed toward high-priority nutrients (one start per shortfall-prone nutrient)
-  // For each nutrient, start by maxing out the ingredients highest in that nutrient
   for (const nut of activeNuts) {
     const priority = ingrs
       .map(function(ing, idx) { return { idx: idx, val: parseFloat(ing[nut]) || 0 }; })
       .sort(function(a, b) { return b.val - a.val; });
-    const x = new Array(n).fill(0);
-    let remaining = 100;
+    const x = mins.slice();
+    let remaining = freeShare;
     for (const p of priority) {
-      const cap = Math.min(parseFloat(ingrs[p.idx].maxIncl) || 100, 100, remaining);
-      // Use up to 60% of what's available in this ingredient, leaving room for others
-      const take = cap * 0.7;
-      x[p.idx] = take;
+      const cap = Math.min(parseFloat(ingrs[p.idx].maxIncl) || 100, 100);
+      const headroom = Math.max(0, cap - x[p.idx]);
+      const take = Math.min(headroom * 0.7, remaining);
+      x[p.idx] += take;
       remaining -= take;
       if (remaining < 0.1) break;
     }
@@ -444,6 +472,11 @@ function computePenalty(x, ingrs, reqs, activeNuts) {
   for (let i = 0; i < ingrs.length; i++) {
     cost += x[i] * (parseFloat(ingrs[i].price) || 0) / 100;
     sum += x[i];
+    // Penalise violations of per-ingredient minIncl/maxIncl
+    const lo = parseFloat(ingrs[i].minIncl) || 0;
+    const hi = Math.min(parseFloat(ingrs[i].maxIncl) || 100, 100);
+    if (x[i] < lo) violation += (lo - x[i]) / Math.max(lo, 0.5);
+    if (x[i] > hi) violation += (x[i] - hi) / Math.max(hi, 0.5);
   }
   // Sum = 100
   violation += Math.abs(sum - 100);
@@ -520,6 +553,7 @@ function solveGoalProgram(ingrs, reqs) {
   const lb = new Array(totalVars).fill(0);
   const ub = new Array(totalVars).fill(0);
   for (let i = 0; i < n; i++) {
+    lb[i] = Math.max(0, parseFloat(ingrs[i].minIncl) || 0);
     ub[i] = Math.min(parseFloat(ingrs[i].maxIncl) || 100, 100);
   }
   for (let k = 0; k < 2 * nNuts; k++) {
@@ -533,7 +567,8 @@ function solveGoalProgram(ingrs, reqs) {
     const formula = {};
     for (let i = 0; i < n; i++) {
       const pct = res.x[i];
-      if (pct > 0.05) formula[ingrs[i].id] = pct;
+      const lo = parseFloat(ingrs[i].minIncl) || 0;
+      if (pct > 0.005 || lo > 0) formula[ingrs[i].id] = pct;
     }
 
     const gaps = {};
@@ -591,7 +626,7 @@ function computeTrueGaps(ingrs, reqs) {
     const cMax = nutVals.map(function(v) { return -v; }); // negate to maximize
     const A_eq = [new Array(n).fill(1)];
     const b_eq = [100];
-    const lb = new Array(n).fill(0);
+    const lb = ingrs.map(function(i) { return Math.max(0, parseFloat(i.minIncl) || 0); });
     const ub = ingrs.map(function(i) { return Math.min(parseFloat(i.maxIncl) || 100, 100); });
     const maxRes = lpSolve({ c: cMax, A_eq: A_eq, b_eq: b_eq, lb: lb, ub: ub });
     const maxAchievable = maxRes && maxRes.x ? -maxRes.cost : 0;

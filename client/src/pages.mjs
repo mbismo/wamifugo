@@ -2070,6 +2070,11 @@ function FormulatorPage(props) {
     return new Set(availableIngredients.map(function(i) { return i.id; }));
   });
 
+  // Manual session-only locks: { [ingId]: pct }. When an ingredient is locked,
+  // the solver treats it like a temporary mandatoryAt rule (minIncl == maxIncl
+  // == pct) for the current solve only. Cleared when species/stage changes.
+  const [lockedPcts, setLockedPcts] = useState({});
+
   useEffect(function() {
     const available = ingredients.filter(function(i) {
       const inv = inventory.find(function(x) { return x.id === i.id; });
@@ -2080,8 +2085,10 @@ function FormulatorPage(props) {
 
   // When species/stage changes, auto-add mandatory ingredients to the selection
   // and remove ingredients that are restricted away from this stage.
+  // Also clear any manual locks (they were set for the previous stage).
   useEffect(function() {
     if (!species || !stage) return;
+    setLockedPcts({});
     setSelIngrs(function(prev) {
       const next = new Set(prev);
       ingredients.forEach(function(i) {
@@ -2117,8 +2124,21 @@ function FormulatorPage(props) {
         return null;
       }
       const base = Object.assign({}, i, { price: getSellPriceForIng(i) });
-      // Mandatory inclusion: if this ingredient must be present at the current stage,
-      // bake the rule into minIncl/maxIncl so the solver enforces it as bounds.
+
+      // Stock-aware max inclusion: a 100kg batch can use at most
+      // `availableQty / batchKg * 100` percent of an ingredient before running
+      // out of stock. This stops the solver proposing mixes the user can't
+      // actually mill from current inventory.
+      const inv = inventory.find(function(x) { return x.id === i.id; });
+      const availableKg = inv ? (typeof availableQty === 'function' ? availableQty(inv) : (inv.qty || 0)) : 0;
+      let stockMax = 100;
+      if (availableKg > 0 && batchKg > 0) {
+        stockMax = Math.min(100, (availableKg / batchKg) * 100);
+      } else if (availableKg <= 0) {
+        stockMax = 0;
+      }
+
+      // Mandatory inclusion (from premix rules) — bake into bounds
       if (species && stage) {
         const mand = getMandatoryRangeForStage(i, species, stage);
         if (mand) {
@@ -2126,15 +2146,24 @@ function FormulatorPage(props) {
           base.maxIncl = Math.min(parseFloat(base.maxIncl) || 100, mand.maxPct);
         }
       }
+
+      // Manual lock (session-only): pin this ingredient to a fixed % for this solve
+      const lockedPct = lockedPcts[i.id];
+      if (lockedPct != null && !isNaN(parseFloat(lockedPct))) {
+        const v = Math.max(0, Math.min(100, parseFloat(lockedPct)));
+        base.minIncl = v;
+        base.maxIncl = v;
+      }
+
       if (species) {
         const effMax = getEffectiveMaxIncl(base, species, currentReq);
-        if (effMax === 0) return null;
-        const newMax = Math.min(base.maxIncl || 100, effMax);
+        if (effMax === 0 && (parseFloat(base.minIncl) || 0) === 0) return null;
+        const newMax = Math.min(base.maxIncl || 100, effMax || 100, stockMax);
         // If a mandatory minimum exceeds the resolved maxIncl, the situation is infeasible.
         // We still pass it through; the solver / infeasible card will surface the conflict.
         return Object.assign({}, base, { maxIncl: newMax });
       }
-      return base;
+      return Object.assign({}, base, { maxIncl: Math.min(base.maxIncl || 100, stockMax) });
     }).filter(Boolean);
   }
 
@@ -2224,7 +2253,7 @@ function FormulatorPage(props) {
       setLoading(false);
     }, 500);
     return function() { clearTimeout(timer); };
-  }, [species, stage, selIngrs.size]);
+  }, [species, stage, selIngrs.size, lockedPcts, batchKg]);
 
   function doFormulate() {
     if (!species || !stage) { showT('Select species and stage.', 'error'); return; }
@@ -2509,6 +2538,25 @@ function FormulatorPage(props) {
   }
 
   // Ingredient selection cards
+  function toggleLock(id, defaultPct) {
+    setLockedPcts(function(prev) {
+      const next = Object.assign({}, prev);
+      if (next[id] != null) {
+        delete next[id];
+      } else {
+        next[id] = defaultPct != null ? defaultPct : 10;
+      }
+      return next;
+    });
+  }
+  function setLockPct(id, pct) {
+    setLockedPcts(function(prev) {
+      const next = Object.assign({}, prev);
+      next[id] = pct;
+      return next;
+    });
+  }
+
   const ingCards = ingredients.map(function(ing) {
     // Hide ingredients restricted to other stages entirely
     if (species && stage && !isIngredientAllowedForStage(ing, species, stage)) {
@@ -2521,11 +2569,15 @@ function FormulatorPage(props) {
     const mand = (species && stage) ? getMandatoryRangeForStage(ing, species, stage) : null;
     const isMand = !!mand;
     const isPrem = isIngredientPremix(ing);
+    const lockedPct = lockedPcts[ing.id];
+    const isLocked = lockedPct != null;
     const baseStyle = isMand
       ? { border: '2px solid ' + C.warning, background: '#fff4e0' }
-      : (sel
-        ? { border: '2px solid ' + C.grass, background: '#f0f9f4' }
-        : Object.assign({}, anfStatusStyle(anfStat), { opacity: hasStock ? 1 : 0.45 }));
+      : isLocked
+        ? { border: '2px solid #0891b2', background: '#ecfeff' }
+        : (sel
+          ? { border: '2px solid ' + C.grass, background: '#f0f9f4' }
+          : Object.assign({}, anfStatusStyle(anfStat), { opacity: hasStock ? 1 : 0.45 }));
     const cardStyle = Object.assign({
       padding: '9px 11px',
       borderRadius: 10,
@@ -2539,6 +2591,10 @@ function FormulatorPage(props) {
       indicator = h('div', {
         style: { position: 'absolute', top: 5, right: 7, fontSize: 9, color: C.warning, fontWeight: 700, letterSpacing: 0.5 }
       }, '\u{1F510} REQ');
+    } else if (isLocked) {
+      indicator = h('div', {
+        style: { position: 'absolute', top: 5, right: 7, fontSize: 9, color: '#0891b2', fontWeight: 700, letterSpacing: 0.5 }
+      }, '\u{1F512} LOCK');
     } else if (sel) {
       indicator = h('div', {
         style: { position: 'absolute', top: 5, right: 7, fontSize: 11, color: C.grass, fontWeight: 700 }
@@ -2575,10 +2631,57 @@ function FormulatorPage(props) {
         borderRadius: 4, fontSize: 9, fontWeight: 700, verticalAlign: 'middle'
       }
     }, '\u{1F4E6} COMPLETE FEED') : null;
+
+    // Lock control: only available for selected, in-stock, non-mandatory ingredients
+    const canLock = sel && hasStock && !isMand;
+    const lockControl = canLock ? h('div', {
+      style: {
+        marginTop: 6, display: 'flex', gap: 5, alignItems: 'center',
+        paddingTop: 6, borderTop: '1px dashed ' + (isLocked ? '#0891b2' : C.border)
+      },
+      onClick: function(e) { e.stopPropagation(); }
+    },
+      h('button', {
+        type: 'button',
+        onClick: function(e) {
+          e.stopPropagation();
+          toggleLock(ing.id, isLocked ? null : 10);
+        },
+        style: {
+          padding: '2px 7px', fontSize: 10, fontWeight: 700,
+          background: isLocked ? '#0891b2' : 'white',
+          color: isLocked ? 'white' : '#0891b2',
+          border: '1px solid #0891b2', borderRadius: 6, cursor: 'pointer',
+          fontFamily: "'DM Mono',monospace"
+        }
+      }, isLocked ? '\u{1F512} Locked' : '\u{1F512} Lock'),
+      isLocked ? h('input', {
+        type: 'number', step: '0.1', min: 0, max: 100,
+        value: lockedPct,
+        onChange: function(e) {
+          e.stopPropagation();
+          const v = e.target.value;
+          if (v === '' || v == null) {
+            setLockPct(ing.id, 0);
+          } else {
+            setLockPct(ing.id, Math.max(0, Math.min(100, parseFloat(v) || 0)));
+          }
+        },
+        onClick: function(e) { e.stopPropagation(); },
+        style: {
+          width: 60, padding: '2px 5px', fontSize: 11,
+          fontFamily: "'DM Mono',monospace",
+          border: '1px solid #0891b2', borderRadius: 4, textAlign: 'right'
+        }
+      }) : null,
+      isLocked ? h('span', { style: { fontSize: 10, color: '#0891b2', fontWeight: 700 } }, '%') : null
+    ) : null;
+
     return h('div', {
       key: ing.id,
       onClick: function() {
         if (isMand) return;          // can't deselect mandatory ingredients
+        if (isLocked) return;        // clicking a locked card doesn't toggle selection
         if (hasStock) toggleI(ing.id);
       },
       style: cardStyle
@@ -2592,7 +2695,8 @@ function FormulatorPage(props) {
       }, stockText),
       mandText ? h('div', {
         style: { fontSize: 10, color: C.warning, marginTop: 2, fontWeight: 700 }
-      }, mandText) : null
+      }, mandText) : null,
+      lockControl
     );
   }).filter(Boolean);
 
@@ -3291,6 +3395,33 @@ function FormulatorPage(props) {
         )
       }, 'Step 2 - Ingredients (' + selIngrs.size + ' of ' + availableIngredients.length + ' in stock)'),
       h('div', { style: { padding: '14px 16px' } },
+        Object.keys(lockedPcts).length > 0 ? h('div', {
+          style: {
+            marginBottom: 12, padding: '8px 12px',
+            background: '#ecfeff', border: '1px solid #67e8f9',
+            borderRadius: 8, fontSize: 12, color: '#0e7490',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12
+          }
+        },
+          h('div', null,
+            h('strong', null, '\u{1F512} ' + Object.keys(lockedPcts).length + ' ingredient' +
+              (Object.keys(lockedPcts).length > 1 ? 's' : '') + ' locked'),
+            ' \u{2022} solver will use locked percentages exactly and optimise the rest.',
+            (function() {
+              const totalLocked = Object.values(lockedPcts).reduce(function(s, v) { return s + (parseFloat(v) || 0); }, 0);
+              return ' Total locked: ' + totalLocked.toFixed(1) + '%';
+            })()
+          ),
+          h('button', {
+            type: 'button',
+            onClick: function() { setLockedPcts({}); },
+            style: {
+              padding: '3px 9px', fontSize: 11, fontWeight: 700,
+              background: 'white', color: '#0891b2',
+              border: '1px solid #0891b2', borderRadius: 6, cursor: 'pointer'
+            }
+          }, 'Clear all locks')
+        ) : null,
         h('div', {
           style: {
             display: 'grid',
