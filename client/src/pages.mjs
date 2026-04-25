@@ -4316,6 +4316,9 @@ function ResourcesPage() {
   const sales = ctx.sales || [];
   const purchases = ctx.purchases || [];
   const customers = ctx.customers || [];
+  const products = ctx.products || [];
+  const productInventory = ctx.productInventory || [];
+  const productPurchases = ctx.productPurchases || [];
 
   const [toast, setToast] = useState(null);
   function showT(msg) {
@@ -4458,6 +4461,86 @@ function ResourcesPage() {
             return [a.category, a.stage, a.cp.join('-'), a.me.join('-'), a.ca.join('-'), a.p.join('-')];
           }),
           ['Category', 'Stage', 'CP%', 'ME kcal/kg', 'Ca%', 'P%']);
+      }
+    },
+    { title: 'Products Catalog', desc: 'Vet products, supplements, supplies',
+      onCSV: function() {
+        const headers = ['Name', 'Category', 'Unit', 'Manufacturer', 'Prescription', 'Notes'];
+        const rows = [headers].concat(products.map(function(p) {
+          return [p.name, p.category || '', p.unit || '', p.manufacturer || '',
+            p.prescriptionRequired ? 'Yes' : 'No', p.notes || ''];
+        }));
+        dlCSV(rows, 'products.csv');
+        showT('Products exported');
+      },
+      onPrint: function() {
+        printReport('Products Catalog',
+          products.map(function(p) {
+            return [p.name, p.category || '', p.unit || '', p.manufacturer || '',
+              p.prescriptionRequired ? 'Rx' : ''];
+          }),
+          ['Product', 'Category', 'Unit', 'Manufacturer', 'Rx']);
+      }
+    },
+    { title: 'Product Inventory', desc: 'Product stock levels, lots, expiry dates',
+      onCSV: function() {
+        const headers = ['Product', 'Category', 'Unit', 'Total On Hand', 'Lot Count',
+          'Lot Purchase Date', 'Lot Supplier', 'Lot Original Qty', 'Lot Remaining', 'Lot Cost/unit',
+          'Lot Expiry', 'Lot Manufacturer Batch'];
+        const rows = [headers];
+        productInventory.forEach(function(invRow) {
+          const lots = invRow.lots || [];
+          if (lots.length === 0) {
+            rows.push([invRow.name, invRow.category || '', invRow.unit || '',
+              invRow.qty || 0, 0, '', '', '', '', '', '', '']);
+            return;
+          }
+          lots.forEach(function(lot) {
+            rows.push([invRow.name, invRow.category || '', invRow.unit || '',
+              invRow.qty || 0, lots.length,
+              lot.purchaseDate || '', lot.supplier || '',
+              lot.originalQty || 0, lot.remainingQty || 0, lot.costPerKg || 0,
+              lot.expiryDate || '', lot.manufacturerBatch || '']);
+          });
+        });
+        dlCSV(rows, 'product_inventory.csv');
+        showT('Product inventory exported');
+      },
+      onPrint: function() {
+        const printRows = [];
+        productInventory.forEach(function(invRow) {
+          (invRow.lots || []).forEach(function(lot) {
+            printRows.push([
+              invRow.name,
+              lot.remainingQty + ' ' + (invRow.unit || 'u') + ' / ' + lot.originalQty,
+              'KES ' + lot.costPerKg,
+              lot.expiryDate || '-',
+              lot.manufacturerBatch || '-'
+            ]);
+          });
+        });
+        printReport('Product Inventory & Lots',
+          printRows,
+          ['Product', 'Remaining/Original', 'Cost/unit', 'Expiry', 'Mfr Batch']);
+      }
+    },
+    { title: 'Product Purchases', desc: 'All product purchase records',
+      onCSV: function() {
+        const headers = ['Date', 'Product', 'Qty', 'Cost/unit', 'Total', 'Supplier', 'Expiry', 'Manufacturer Batch'];
+        const rows = [headers].concat(productPurchases.map(function(p) {
+          return [p.date, p.productName, p.qty, p.costPerUnit, p.total, p.supplier || '',
+            p.expiryDate || '', p.manufacturerBatch || ''];
+        }));
+        dlCSV(rows, 'product_purchases.csv');
+        showT('Product purchases exported');
+      },
+      onPrint: function() {
+        printReport('Product Purchase Records',
+          productPurchases.map(function(p) {
+            return [p.date, p.productName, p.qty, 'KES ' + p.costPerUnit,
+              'KES ' + (p.total || 0).toLocaleString(), p.supplier || ''];
+          }),
+          ['Date', 'Product', 'Qty', 'Cost/unit', 'Total', 'Supplier']);
       }
     }
   ];
