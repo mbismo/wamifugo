@@ -260,7 +260,7 @@ function Inp(props) {
   const inputStyle = Object.assign({
     width: '100%', padding: '8px 11px', border: '1px solid ' + C.border, borderRadius: 8,
     fontSize: 13, color: C.ink, background: C.cream, outline: 'none'
-  }, props.style || {});
+  }, props.multiline ? { minHeight: 70, fontFamily: 'inherit', resize: 'vertical' } : {}, props.style || {});
   // Local state buffers keystrokes so parent re-renders do not lose focus
   const [local, setLocal] = useState(props.value == null ? '' : String(props.value));
   const [focused, setFocused] = useState(false);
@@ -269,8 +269,7 @@ function Inp(props) {
     if (!focused) setLocal(props.value == null ? '' : String(props.value));
   }, [props.value, focused]);
   const labelEl = props.label ? h('div', { style: labelStyle }, props.label) : null;
-  const input = h('input', {
-    type: props.type || 'text',
+  const inputProps = {
     value: local,
     onFocus: function() { setFocused(true); },
     onBlur: function() { setFocused(false); if (props.onChange) props.onChange(local); },
@@ -282,7 +281,10 @@ function Inp(props) {
     placeholder: props.placeholder || '',
     maxLength: props.maxLength,
     style: inputStyle
-  });
+  };
+  const input = props.multiline
+    ? h('textarea', Object.assign({ rows: props.rows || 3 }, inputProps))
+    : h('input', Object.assign({ type: props.type || 'text' }, inputProps));
   return h('div', { style: wrapStyle }, labelEl, input);
 }
 
@@ -1179,7 +1181,7 @@ function IngredientsPage() {
   const [toast, setToast] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [importStatus, setImportStatus] = useState(null);
-  const blank = { name: '', category: 'energy', cp: '', me: '', fat: '', fibre: '', ca: '', p: '', lys: '', met: '', antiNote: '' };
+  const blank = { name: '', category: 'energy', cp: '', me: '', fat: '', fibre: '', ca: '', p: '', lys: '', met: '', nutritiveNote: '', antiNote: '' };
   const [form, setForm] = useState(blank);
 
   function showT(msg, type) {
@@ -1230,7 +1232,9 @@ function IngredientsPage() {
           ca: parseFloat(get(['ca', 'calcium', 'capercent'])) || 0,
           p: parseFloat(get(['p', 'phosphorus', 'ppercent'])) || 0,
           lys: parseFloat(get(['lys', 'lysine'])) || 0,
-          met: parseFloat(get(['met', 'methionine'])) || 0
+          met: parseFloat(get(['met', 'methionine'])) || 0,
+          nutritiveNote: String(get(['nutritivenote', 'nutritivenotes', 'nutritive', 'benefits', 'notes']) || '').trim(),
+          antiNote: String(get(['antinote', 'antinutritivenote', 'antinutritivenotes', 'antinutritive', 'cautions', 'warnings']) || '').trim()
         });
       });
       if (newIngredients.length === 0) {
@@ -1263,10 +1267,14 @@ function IngredientsPage() {
   }
 
   function downloadTemplate() {
-    const headers = ['Name', 'Category', 'CP %', 'ME kcal/kg', 'Fat %', 'Fibre %', 'Ca %', 'P %', 'Lys %', 'Met %'];
+    const headers = ['Name', 'Category', 'CP %', 'ME kcal/kg', 'Fat %', 'Fibre %', 'Ca %', 'P %', 'Lys %', 'Met %', 'Nutritive Note', 'Anti Note'];
     const sample = [
-      ['Maize Grain', 'energy', 8.5, 3350, 3.8, 2.3, 0.02, 0.28, 0.24, 0.17],
-      ['Soybean Meal (44%)', 'protein', 44, 2230, 1.5, 6.5, 0.33, 0.65, 2.78, 0.64]
+      ['Maize Grain', 'energy', 8.5, 3350, 3.8, 2.3, 0.02, 0.28, 0.24, 0.17,
+        'High-energy staple. Excellent palatability. Yellow varieties supply xanthophyll for egg yolk colour.',
+        'Susceptible to aflatoxin if poorly stored. Reject mouldy or musty grain. Limit to 70% in poultry mash.'],
+      ['Soybean Meal (44%)', 'protein', 44, 2230, 1.5, 6.5, 0.33, 0.65, 2.78, 0.64,
+        'Highest-quality plant protein. Excellent amino acid profile, especially lysine. Standard pairing with maize.',
+        'Raw soy contains trypsin inhibitors and must be heat-treated (toasted). Limit to 35% to avoid excess Lys/Met imbalance.']
     ];
     exportToExcel([headers].concat(sample), 'ingredients_import_template.xlsx', 'Ingredients');
   }
@@ -1283,6 +1291,8 @@ function IngredientsPage() {
       p: parseFloat(form.p) || 0,
       lys: parseFloat(form.lys) || 0,
       met: parseFloat(form.met) || 0,
+      nutritiveNote: (form.nutritiveNote || '').trim(),
+      antiNote: (form.antiNote || '').trim(),
     });
     if (editing) {
       setIngredients(ingredients.map(function(i) { return i.id === editing.id ? newIng : i; }));
@@ -1321,7 +1331,30 @@ function IngredientsPage() {
       return h('span', { style: { fontFamily: "'DM Mono',monospace", color: C.grass, fontWeight: 700 } },
         sp ? fmtKES(sp) : '-');
     }},
-    { key: 'actions', label: '', render: function(r) {
+    { key: 'notes', label: 'Notes', sortable: false, render: function(r) {
+      const hasNutritive = r.nutritiveNote && r.nutritiveNote.length > 0;
+      const hasAnti = r.antiNote && r.antiNote.length > 0;
+      if (!hasNutritive && !hasAnti) return h('span', { style: { color: C.muted, fontSize: 11 } }, '-');
+      return h('div', { style: { display: 'flex', gap: 6 } },
+        hasNutritive ? h('span', {
+          title: 'Nutritive: ' + r.nutritiveNote,
+          style: {
+            display: 'inline-flex', alignItems: 'center', gap: 3,
+            padding: '2px 7px', background: '#f0f9f4', color: C.grass, border: '1px solid ' + C.leaf + '66',
+            borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: 'help'
+          }
+        }, '\u{1F33F}') : null,
+        hasAnti ? h('span', {
+          title: 'Anti-nutritive: ' + r.antiNote,
+          style: {
+            display: 'inline-flex', alignItems: 'center', gap: 3,
+            padding: '2px 7px', background: '#fff4e0', color: C.warning, border: '1px solid ' + C.warning + '66',
+            borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: 'help'
+          }
+        }, '\u{26A0}') : null
+      );
+    }},
+    { key: 'actions', label: '', sortable: false, render: function(r) {
       return h('div', { style: { display: 'flex', gap: 4 } },
         h(Btn, { size: 'sm', variant: 'secondary', onClick: function() { openEdit(r); } }, 'Edit'),
         h(Btn, { size: 'sm', variant: 'danger', onClick: function() { delIng(r); } }, 'Del')
@@ -1355,6 +1388,23 @@ function IngredientsPage() {
       h(Inp, { label: 'Lys %', value: form.lys, onChange: function(v) { setForm(Object.assign({}, form, { lys: v })); }, type: 'number' }),
       h(Inp, { label: 'Met %', value: form.met, onChange: function(v) { setForm(Object.assign({}, form, { met: v })); }, type: 'number' })
     ),
+    h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 16 } }, 'Notes'),
+    h(Inp, {
+      label: '\u{1F33F} Nutritive Notes',
+      multiline: true,
+      rows: 3,
+      placeholder: 'Why this ingredient is useful: amino acid profile, energy density, palatability, special benefits...',
+      value: form.nutritiveNote,
+      onChange: function(v) { setForm(Object.assign({}, form, { nutritiveNote: v })); }
+    }),
+    h(Inp, {
+      label: '\u{26A0} Anti-Nutritive Notes',
+      multiline: true,
+      rows: 3,
+      placeholder: 'Cautions: ANF (e.g. tannins, gossypol, trypsin inhibitors), inclusion limits per species, processing requirements (heat, soak)...',
+      value: form.antiNote,
+      onChange: function(v) { setForm(Object.assign({}, form, { antiNote: v })); }
+    }),
     h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
       h(Btn, { onClick: function() { setShowForm(false); setEditing(null); }, variant: 'secondary' }, 'Cancel'),
       h(Btn, { onClick: saveIng, variant: 'success' }, editing ? 'Update Ingredient' : 'Add Ingredient')
@@ -1371,7 +1421,7 @@ function IngredientsPage() {
     },
       h('div', { style: { fontWeight: 700, marginBottom: 6 } }, 'Expected column headers:'),
       h('div', { style: { fontFamily: "'DM Mono',monospace", fontSize: 11 } },
-        'Name, Category, CP %, ME kcal/kg, Fat %, Fibre %, Ca %, P %, Lys %, Met %'),
+        'Name, Category, CP %, ME kcal/kg, Fat %, Fibre %, Ca %, P %, Lys %, Met %, Nutritive Note, Anti Note'),
       h('div', { style: { marginTop: 8, fontSize: 12 } },
         'Categories: energy, protein, macromineral, micromineral, roughage, additive. ',
         'Existing ingredients with matching names will be updated.')
