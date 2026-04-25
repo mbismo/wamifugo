@@ -37,7 +37,8 @@ export async function pushCollection(name, data) {
 export async function pullAll() {
   const COLS = [
     'inventory','purchases','sales','customers',
-    'stockLedger','ingredients','users','animalReqs','savedFormulas'
+    'stockLedger','ingredients','users','animalReqs','savedFormulas',
+    'products','productInventory','productPurchases'
   ];
   const results = await Promise.allSettled(
     COLS.map(col => fetchCollection(col).then(r => ({ col, data: r.data, ts: r.ts })))

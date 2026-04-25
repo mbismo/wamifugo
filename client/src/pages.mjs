@@ -167,6 +167,7 @@ const NAV = [
   { key: 'resources', icon: '\u{1F4CB}', label: 'Resources' },
   { key: 'traceability', icon: '\u{1F50D}', label: 'Traceability Log', admin: true },
   { key: 'ingredients', icon: '\u{1F33D}', label: 'Ingredients', admin: true },
+  { key: 'products', icon: '\u{1F9F4}', label: 'Products', admin: true },
   { key: 'nutrition', icon: '\u{2697}', label: 'Nutritional Reqs', admin: true },
   { key: 'users', icon: '\u{1F464}', label: 'Users', admin: true },
 ];
@@ -903,6 +904,7 @@ function DashboardPage() {
   const inventory = ctx.inventory || [];
   const customers = ctx.customers || [];
   const purchases = ctx.purchases || [];
+  const productInventory = ctx.productInventory || [];
 
   const today30 = new Date(); today30.setDate(today30.getDate() - 30);
   const monthSales = sales.filter(function(s) { return new Date(s.date) >= today30; });
@@ -938,6 +940,49 @@ function DashboardPage() {
         })
       )
     ) : null,
+    // Expiry alerts (products only)
+    (function() {
+      const expiring = getExpiringLots(productInventory, 30);
+      if (expiring.length === 0) return null;
+      const critical = expiring.filter(function(e) { return e.status === 'expired' || e.status === 'critical'; });
+      return h(Card, { style: { border: '2px solid ' + (critical.length > 0 ? C.danger : C.warning) } },
+        h(CardTitle, null,
+          (critical.length > 0 ? '\u{1F6A8} ' : '\u{26A0} ') +
+          'Product Expiry Alert (' + expiring.length + ' lot' + (expiring.length === 1 ? '' : 's') + ' within 30 days)'
+        ),
+        h('div', { style: { padding: 14 } },
+          expiring.slice(0, 8).map(function(e, i) {
+            const exStyle = expiryBadgeStyle(e.status);
+            return h('div', {
+              key: i,
+              style: {
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '8px 0',
+                borderBottom: i < Math.min(expiring.length, 8) - 1 ? '1px solid ' + C.border : 'none'
+              }
+            },
+              h('div', null,
+                h('span', { style: { color: C.earth, fontWeight: 600 } }, e.productName),
+                h('span', { style: { color: C.muted, marginLeft: 8, fontSize: 12 } },
+                  e.remainingQty + ' ' + (e.unit || 'u') +
+                  (e.manufacturerBatch ? ' \u2022 batch ' + e.manufacturerBatch : ''))
+              ),
+              h('span', {
+                style: {
+                  padding: '3px 9px',
+                  background: exStyle.bg, color: exStyle.fg,
+                  border: '1px solid ' + exStyle.border,
+                  borderRadius: 12, fontSize: 11, fontWeight: 700,
+                  fontFamily: "'DM Mono',monospace"
+                }
+              }, e.expiryDate + ' (' + (e.daysLeft < 0 ? Math.abs(e.daysLeft) + 'd ago' : e.daysLeft + 'd') + ')')
+            );
+          }),
+          expiring.length > 8 ? h('div', { style: { color: C.muted, fontStyle: 'italic', marginTop: 8, fontSize: 12 } },
+            '+ ' + (expiring.length - 8) + ' more — see Products page') : null
+        )
+      );
+    })(),
     h(Card, null,
       h(CardTitle, null, 'Recent Sales'),
       h(Tbl, {
@@ -4505,10 +4550,29 @@ function DirectSalePage() {
   const ingredients = ctx.ingredients || [];
   const inventory = ctx.inventory || [];
   const setInventory = ctx.setInventory;
+  const products = ctx.products || [];
+  const productInventory = ctx.productInventory || [];
+  const setProductInventory = ctx.setProductInventory;
   const sales = ctx.sales || [];
   const setSales = ctx.setSales;
   const customers = ctx.customers || [];
   const user = ctx.user;
+
+  // Helpers to find by id across both pools
+  function findItemDef(id) {
+    const ing = ingredients.find(function(x) { return x.id === id; });
+    if (ing) return { kind: 'ingredient', def: ing };
+    const prod = products.find(function(x) { return x.id === id; });
+    if (prod) return { kind: 'product', def: prod };
+    return null;
+  }
+  function findInvRow(id) {
+    const inv = inventory.find(function(x) { return x.id === id; });
+    if (inv) return { kind: 'ingredient', row: inv };
+    const pinv = productInventory.find(function(x) { return x.id === id; });
+    if (pinv) return { kind: 'product', row: pinv };
+    return null;
+  }
 
   const [custId, setCustId] = useState('');
   const [walkInName, setWalkInName] = useState('');
@@ -4523,21 +4587,22 @@ function DirectSalePage() {
   }
 
   function getStock(itemId) {
-    const inv = inventory.find(function(i) { return i.id === itemId; });
-    return inv ? inv.qty : 0;
+    const inv = findInvRow(itemId);
+    return inv ? inv.row.qty : 0;
   }
 
   function getDefaultPrice(itemId, qty) {
-    const inv = inventory.find(function(i) { return i.id === itemId; });
+    const inv = findInvRow(itemId);
     if (!inv) return 0;
-    const sp = inv.sellPriceDirect || Math.round((inv.lastPrice || 0) * (1 + (inv.margin || 20) / 100) * 100) / 100;
+    const row = inv.row;
+    const sp = row.sellPriceDirect || Math.round((row.lastPrice || 0) * (1 + (row.margin || 20) / 100) * 100) / 100;
     return Math.round(sp * qty * 100) / 100;
   }
 
   function getBuyCost(itemId, qty, lotOrder) {
-    const inv = inventory.find(function(i) { return i.id === itemId; });
+    const inv = findInvRow(itemId);
     if (!inv) return 0;
-    const r = consumeFromLots(inv, qty, lotOrder);
+    const r = consumeFromLots(inv.row, qty, lotOrder);
     return r.totalCost;
   }
 
@@ -4547,9 +4612,9 @@ function DirectSalePage() {
       showT('Already added. Edit quantity or remove the existing line.', 'error');
       return;
     }
-    const inv = inventory.find(function(i) { return i.id === pickerId; });
-    if (!inv || inv.qty <= 0) {
-      showT('No stock for this ingredient.', 'error');
+    const inv = findInvRow(pickerId);
+    if (!inv || inv.row.qty <= 0) {
+      showT('No stock for this item.', 'error');
       return;
     }
     const defaultQty = 1;
@@ -4602,32 +4667,49 @@ function DirectSalePage() {
     const customerName = cust ? cust.name : (walkInName.trim() || 'Walk-in');
 
     // Consume lots FIFO for each line; build consumption records
-    const consumptions = [];
+    const ingredientConsumptions = [];
+    const productConsumptions = [];
     const saleItems = items.map(function(it) {
-      const inv = inventory.find(function(x) { return x.id === it.itemId; });
-      const ing = ingredients.find(function(x) { return x.id === it.itemId; });
-      const r = consumeFromLots(inv, it.qty, it.lotOrder || null);
-      consumptions.push({ itemId: it.itemId, newLots: r.newLots });
+      const found = findInvRow(it.itemId);
+      const itemDef = findItemDef(it.itemId);
+      const r = found ? consumeFromLots(found.row, it.qty, it.lotOrder || null) : { newLots: [], consumed: [], totalCost: 0, shortfall: it.qty };
+      if (found) {
+        if (found.kind === 'product') {
+          productConsumptions.push({ itemId: it.itemId, newLots: r.newLots });
+        } else {
+          ingredientConsumptions.push({ itemId: it.itemId, newLots: r.newLots });
+        }
+      }
       const realCost = r.totalCost;
-      const realCostPerKg = it.qty > 0 ? realCost / it.qty : 0;
+      const realPerUnit = it.qty > 0 ? realCost / it.qty : 0;
+      const name = itemDef ? itemDef.def.name : ((found && found.row.name) || '(unknown)');
+      const unit = (itemDef && itemDef.kind === 'product') ? (itemDef.def.unit || 'unit') : 'kg';
       return {
         id: it.itemId,
-        name: (ing || inv || {}).name || '(unknown)',
+        kind: found ? found.kind : 'ingredient',
+        name: name,
+        unit: unit,
         qty: it.qty,
         totalPrice: it.totalPrice,
         pricePerKg: it.qty > 0 ? Math.round((it.totalPrice / it.qty) * 100) / 100 : 0,
-        buyPricePerKg: Math.round(realCostPerKg * 100) / 100,
+        buyPricePerKg: Math.round(realPerUnit * 100) / 100,
         buyCostTotal: Math.round(realCost * 100) / 100,
         lotsUsed: r.consumed
       };
     });
 
-    // Apply all consumptions in a single inventory update
-    const newInv = applyLotConsumptions(inventory, consumptions);
-    setInventory(newInv);
+    // Apply consumptions to the right pool
+    if (ingredientConsumptions.length > 0) {
+      const newInv = applyLotConsumptions(inventory, ingredientConsumptions);
+      setInventory(newInv);
+    }
+    if (productConsumptions.length > 0) {
+      const newProdInv = applyLotConsumptions(productInventory, productConsumptions);
+      setProductInventory(newProdInv);
+    }
 
     const productLabel = items.length === 1
-      ? saleItems[0].name + ' (' + saleItems[0].qty + 'kg)'
+      ? saleItems[0].name + ' (' + saleItems[0].qty + ' ' + saleItems[0].unit + ')'
       : 'Direct sale: ' + items.length + ' items';
 
     const realTotalBuyCost = saleItems.reduce(function(s, si) { return s + si.buyCostTotal; }, 0);
@@ -4676,22 +4758,31 @@ function DirectSalePage() {
     showT('Sale recorded. KES ' + totalRevenue.toFixed(2) + ' \u{2022} ' + saleItems.length + ' line(s).');
   }
 
-  // Build picker options (alphabetical, in-stock first)
-  const pickerOptions = [{ value: '', label: 'Choose ingredient to add...' }].concat(
-    ingredients
+  // Build picker options (alphabetical, in-stock first; mixes ingredients + products)
+  const allItems = [].concat(
+    ingredients.map(function(i) { return { kind: 'ingredient', def: i }; }),
+    products.map(function(p) { return { kind: 'product', def: p }; })
+  );
+  const pickerOptions = [{ value: '', label: 'Choose ingredient or product to add...' }].concat(
+    allItems
       .slice()
       .sort(function(a, b) {
-        const sA = getStock(a.id), sB = getStock(b.id);
+        const sA = getStock(a.def.id), sB = getStock(b.def.id);
         if (sA > 0 && sB <= 0) return -1;
         if (sB > 0 && sA <= 0) return 1;
-        return a.name.localeCompare(b.name);
+        return a.def.name.localeCompare(b.def.name);
       })
-      .map(function(i) {
-        const stock = getStock(i.id);
-        const sellP = getDefaultPrice(i.id, 1);
+      .map(function(item) {
+        const def = item.def;
+        const stock = getStock(def.id);
+        const sellP = getDefaultPrice(def.id, 1);
+        const unit = item.kind === 'product' ? (def.unit || 'unit') : 'kg';
+        const icon = item.kind === 'product' ? '\u{1F9F4} ' : '\u{1F33F} ';
         return {
-          value: i.id,
-          label: i.name + (stock > 0 ? ' \u{2022} ' + stock.toFixed(0) + 'kg \u{2022} KES ' + sellP + '/kg' : ' \u{2022} OUT OF STOCK'),
+          value: def.id,
+          label: icon + def.name + (stock > 0
+            ? ' \u{2022} ' + stock.toFixed(item.kind === 'product' ? 0 : 1) + ' ' + unit + ' \u{2022} KES ' + sellP + '/' + unit
+            : ' \u{2022} OUT OF STOCK'),
           disabled: stock <= 0
         };
       })
@@ -4699,8 +4790,10 @@ function DirectSalePage() {
 
   // Lot picker modal — pick which lots to consume for a given line, in priority order
   const activeItem = (lotPickerIdx != null) ? items[lotPickerIdx] : null;
-  const activeInv = activeItem ? inventory.find(function(x) { return x.id === activeItem.itemId; }) : null;
-  const activeIng = activeItem ? ingredients.find(function(x) { return x.id === activeItem.itemId; }) : null;
+  const activeFound = activeItem ? findInvRow(activeItem.itemId) : null;
+  const activeInv = activeFound ? activeFound.row : null;
+  const activeDef = activeItem ? findItemDef(activeItem.itemId) : null;
+  const activeIng = activeDef ? activeDef.def : null;
 
   function setLotOrderForLine(idx, lotOrder) {
     setItems(items.map(function(it, i) {
@@ -4828,7 +4921,7 @@ function DirectSalePage() {
     toast ? h(Toast, { msg: toast.msg, type: toast.type }) : null,
     h(PageHdr, {
       title: '\u{1F6D2} Direct Sale',
-      subtitle: 'Sell raw ingredients without formulation'
+      subtitle: 'Sell raw ingredients and agrovet products without formulation'
     }),
     // Customer block
     h(Card, { style: { marginBottom: 14 } },
@@ -4893,12 +4986,17 @@ function DirectSalePage() {
             h('div', null, '')
           ),
           items.map(function(it, idx) {
-            const inv = inventory.find(function(x) { return x.id === it.itemId; });
-            const ing = ingredients.find(function(x) { return x.id === it.itemId; });
+            const itemDef = findItemDef(it.itemId);
+            const found = findInvRow(it.itemId);
             const stock = getStock(it.itemId);
             const overStock = it.qty > stock;
             const perKg = it.qty > 0 ? (it.totalPrice / it.qty) : 0;
             const isManual = !!(it.lotOrder && it.lotOrder.length > 0);
+            const itemName = itemDef ? itemDef.def.name : ((found && found.row.name) || '(unknown)');
+            const itemUnit = (itemDef && itemDef.kind === 'product') ? (itemDef.def.unit || 'unit') : 'kg';
+            const itemKindBadge = (itemDef && itemDef.kind === 'product')
+              ? h('span', { style: { fontSize: 10, padding: '1px 5px', background: '#fef3e6', color: '#a07b1c', borderRadius: 4, marginLeft: 6, fontWeight: 700 } }, '\u{1F9F4}')
+              : null;
             return h('div', {
               key: it.itemId,
               style: {
@@ -4911,7 +5009,7 @@ function DirectSalePage() {
               }
             },
               h('div', { style: { fontSize: 13, color: C.earth, fontWeight: 600 } },
-                (ing || inv || {}).name || '(unknown)'),
+                itemName, itemKindBadge),
               h('div', {
                 style: {
                   textAlign: 'right', fontSize: 12,
@@ -4919,7 +5017,7 @@ function DirectSalePage() {
                   fontFamily: "'DM Mono',monospace",
                   fontWeight: overStock ? 700 : 400
                 }
-              }, stock.toFixed(1)),
+              }, stock.toFixed(itemUnit === 'kg' ? 1 : 0) + ' ' + itemUnit),
               h('input', {
                 type: 'number',
                 step: '0.1',
@@ -4995,8 +5093,8 @@ function DirectSalePage() {
         },
           h('strong', null, '\u{26A0} Insufficient stock: '),
           stockIssues.map(function(it) {
-            const ing = ingredients.find(function(x) { return x.id === it.itemId; });
-            return (ing || {}).name || '?';
+            const def = findItemDef(it.itemId);
+            return def ? def.def.name : '?';
           }).join(', '),
           '. Reduce quantity or restock first.'
         ) : null
@@ -5029,6 +5127,675 @@ function DirectSalePage() {
           disabled: !canSell
         }, '\u{2713} Record Sale')
       )
+    ) : null
+  );
+}
+
+// ========== PRODUCT CATEGORIES & EXPIRY HELPERS ==========
+
+const PRODUCT_CATEGORIES = [
+  { key: 'dewormer',    label: 'Dewormer',         color: '#8B5E3C' },
+  { key: 'antibiotic',  label: 'Antibiotic',       color: '#C0392B' },
+  { key: 'vaccine',     label: 'Vaccine',          color: '#2980B9' },
+  { key: 'vitamin',     label: 'Vitamin/Supplement', color: '#27AE60' },
+  { key: 'mineral',     label: 'Mineral/Salt Lick',color: '#7F8C8D' },
+  { key: 'antiseptic',  label: 'Antiseptic/Hygiene', color: '#16A085' },
+  { key: 'tag',         label: 'Tag/ID',           color: '#9B59B6' },
+  { key: 'tool',        label: 'Tool/Equipment',   color: '#34495E' },
+  { key: 'milk_replacer', label: 'Milk Replacer',  color: '#F39C12' },
+  { key: 'other',       label: 'Other',            color: '#7A6A55' },
+];
+
+const PRODUCT_UNITS = [
+  'bottle','sachet','pack','dose','tablet','vial','tube','syringe','piece','kg','litre','box','roll'
+];
+
+function productCatColor(cat) {
+  const m = PRODUCT_CATEGORIES.find(function(c) { return c.key === cat; });
+  return m ? m.color : '#7A6A55';
+}
+function productCatLabel(cat) {
+  const m = PRODUCT_CATEGORIES.find(function(c) { return c.key === cat; });
+  return m ? m.label : (cat || 'Other');
+}
+
+// Days until expiry. Negative = already expired. Null if no expiry date.
+function daysUntilExpiry(dateStr) {
+  if (!dateStr) return null;
+  const exp = new Date(dateStr).getTime();
+  const now = Date.now();
+  if (isNaN(exp)) return null;
+  return Math.floor((exp - now) / (1000 * 60 * 60 * 24));
+}
+
+// Status: 'expired' | 'critical' (<=14d) | 'warning' (<=30d) | 'soon' (<=90d) | 'ok' | 'none'
+function expiryStatus(dateStr) {
+  const d = daysUntilExpiry(dateStr);
+  if (d == null) return 'none';
+  if (d < 0) return 'expired';
+  if (d <= 14) return 'critical';
+  if (d <= 30) return 'warning';
+  if (d <= 90) return 'soon';
+  return 'ok';
+}
+
+function expiryBadgeStyle(status) {
+  const map = {
+    expired:  { bg: '#fde8e8', fg: '#8b1f1f', border: '#C0392B' },
+    critical: { bg: '#fde8e8', fg: '#C0392B', border: '#C0392B' },
+    warning:  { bg: '#fff4e0', fg: '#c15e00', border: '#E67E22' },
+    soon:     { bg: '#fff8e0', fg: '#a07b1c', border: '#E8B84B' },
+    ok:       { bg: '#f0f9f4', fg: '#4A7C59', border: '#6AAB7E' },
+    none:     { bg: '#f5f1e8', fg: '#7A6A55', border: '#E8E0D4' }
+  };
+  return map[status] || map.none;
+}
+
+// Get all product lots that are expired or expiring within `daysAhead` days
+function getExpiringLots(productInventory, daysAhead) {
+  const limit = daysAhead || 30;
+  const out = [];
+  (productInventory || []).forEach(function(row) {
+    (row.lots || []).forEach(function(lot) {
+      if (lot.remainingQty <= 0) return;
+      const d = daysUntilExpiry(lot.expiryDate);
+      if (d == null) return;
+      if (d <= limit) {
+        out.push({
+          productId: row.id,
+          productName: row.name,
+          unit: row.unit,
+          lotId: lot.lotId,
+          expiryDate: lot.expiryDate,
+          remainingQty: lot.remainingQty,
+          manufacturerBatch: lot.manufacturerBatch || '',
+          daysLeft: d,
+          status: expiryStatus(lot.expiryDate)
+        });
+      }
+    });
+  });
+  // Sort by days left ascending (most urgent first)
+  out.sort(function(a, b) { return a.daysLeft - b.daysLeft; });
+  return out;
+}
+
+// ========== PRODUCTS PAGE ==========
+
+function ProductsPage() {
+  const ctx = useContext(Ctx);
+  const products = ctx.products || [];
+  const setProducts = ctx.setProducts;
+  const productInventory = ctx.productInventory || [];
+  const setProductInventory = ctx.setProductInventory;
+  const productPurchases = ctx.productPurchases || [];
+  const setProductPurchases = ctx.setProductPurchases;
+  const user = ctx.user;
+
+  const [tab, setTab] = useState('catalog'); // catalog | inventory | purchases
+  const [showProdForm, setShowProdForm] = useState(false);
+  const [editingProd, setEditingProd] = useState(null);
+  const [showAddStock, setShowAddStock] = useState(false);
+  const [showLots, setShowLots] = useState(null);
+  const [showPriceEdit, setShowPriceEdit] = useState(null);
+  const [priceMode, setPriceMode] = useState('margin');
+  const [marginVal, setMarginVal] = useState('20');
+  const [directPrice, setDirectPrice] = useState('');
+  const [toast, setToast] = useState(null);
+
+  const blankProd = {
+    name: '', category: 'dewormer', unit: 'bottle',
+    manufacturer: '', prescriptionRequired: false, notes: ''
+  };
+  const [prodForm, setProdForm] = useState(blankProd);
+
+  const blankStock = {
+    productId: '', qty: '', costPerUnit: '',
+    purchaseDate: today(), supplier: '',
+    expiryDate: '', manufacturerBatch: ''
+  };
+  const [stockForm, setStockForm] = useState(blankStock);
+
+  function showT(msg, type) {
+    setToast({ msg: msg, type: type || 'success' });
+    setTimeout(function() { setToast(null); }, 3500);
+  }
+
+  // ---- Catalog CRUD ----
+  function openProdAdd() { setProdForm(blankProd); setEditingProd(null); setShowProdForm(true); }
+  function openProdEdit(p) { setProdForm(Object.assign({}, blankProd, p)); setEditingProd(p); setShowProdForm(true); }
+
+  function saveProduct() {
+    if (!prodForm.name) return;
+    const newProd = Object.assign({}, prodForm, {
+      id: editingProd ? editingProd.id : ('prod_' + uid()),
+      name: prodForm.name.trim(),
+      manufacturer: (prodForm.manufacturer || '').trim(),
+      notes: (prodForm.notes || '').trim()
+    });
+    if (editingProd) {
+      setProducts(products.map(function(p) { return p.id === editingProd.id ? newProd : p; }));
+    } else {
+      setProducts(products.concat([newProd]));
+    }
+    setShowProdForm(false);
+    setEditingProd(null);
+    setProdForm(blankProd);
+    showT('Product saved');
+  }
+
+  function deleteProduct(p) {
+    const inv = productInventory.find(function(i) { return i.id === p.id; });
+    if (inv && inv.qty > 0) {
+      if (!window.confirm('This product still has ' + inv.qty + ' ' + (p.unit || 'units') + ' in stock. Delete anyway?')) return;
+    } else {
+      if (!window.confirm('Delete product "' + p.name + '"?')) return;
+    }
+    setProducts(products.filter(function(x) { return x.id !== p.id; }));
+    showT('Product deleted');
+  }
+
+  // ---- Stock & Lots ----
+  function openAddStock(presetProductId) {
+    setStockForm(Object.assign({}, blankStock, presetProductId ? { productId: presetProductId } : {}));
+    setShowAddStock(true);
+  }
+
+  function addStock() {
+    if (!stockForm.productId || !stockForm.qty || !stockForm.costPerUnit) return;
+    const qty = parseFloat(stockForm.qty);
+    const cost = parseFloat(stockForm.costPerUnit);
+    if (qty <= 0 || cost < 0) return;
+    const prod = products.find(function(p) { return p.id === stockForm.productId; });
+    if (!prod) return;
+    const newLot = {
+      lotId: 'plot_' + uid(),
+      purchaseDate: stockForm.purchaseDate,
+      supplier: stockForm.supplier || '',
+      originalQty: qty,
+      remainingQty: qty,
+      costPerKg: cost, // unit cost — keeping field name for shared lot helpers
+      expiryDate: stockForm.expiryDate || '',
+      manufacturerBatch: stockForm.manufacturerBatch || '',
+      ts: Date.now()
+    };
+    const newInv = addLotToInventory(productInventory, prod.id, prod.name, prod.category || 'other', newLot);
+    // Tag the inventory row with unit so display can show it
+    const finalInv = newInv.map(function(r) {
+      if (r.id === prod.id) {
+        return Object.assign({}, r, { unit: prod.unit });
+      }
+      return r;
+    });
+    setProductInventory(finalInv);
+    setProductPurchases(productPurchases.concat([{
+      id: uid(), productId: prod.id, productName: prod.name,
+      qty: qty, costPerUnit: cost, total: qty * cost,
+      date: stockForm.purchaseDate, supplier: stockForm.supplier,
+      expiryDate: stockForm.expiryDate || '',
+      manufacturerBatch: stockForm.manufacturerBatch || '',
+      lotId: newLot.lotId
+    }]));
+    setStockForm(blankStock);
+    setShowAddStock(false);
+    showT('Stock added');
+  }
+
+  function deleteLot(productId, lotId) {
+    if (!window.confirm('Delete this lot? This cannot be undone.')) return;
+    const newInv = productInventory.map(function(i) {
+      if (i.id !== productId) return i;
+      const newLots = (i.lots || []).filter(function(l) { return l.lotId !== lotId; });
+      const newQty = newLots.reduce(function(s, l) { return s + l.remainingQty; }, 0);
+      return Object.assign({}, i, { lots: newLots, qty: newQty });
+    });
+    setProductInventory(newInv);
+    showT('Lot deleted');
+  }
+
+  // ---- Price editor ----
+  function getSellPrice(invRow) {
+    if (!invRow) return 0;
+    if (invRow.sellPriceDirect) return invRow.sellPriceDirect;
+    return Math.round((invRow.lastPrice || 0) * (1 + (invRow.margin || 20) / 100) * 100) / 100;
+  }
+
+  function openPriceEdit(invRow) {
+    setShowPriceEdit(invRow);
+    setPriceMode(invRow.sellPriceDirect ? 'direct' : 'margin');
+    setMarginVal(String(invRow.margin || 20));
+    setDirectPrice(String(invRow.sellPriceDirect || getSellPrice(invRow)));
+  }
+
+  function savePriceEdit() {
+    if (!showPriceEdit) return;
+    const sp = priceMode === 'direct' ? parseFloat(directPrice) : null;
+    const mg = priceMode === 'margin' ? parseFloat(marginVal) : (showPriceEdit.margin || 20);
+    setProductInventory(productInventory.map(function(i) {
+      if (i.id !== showPriceEdit.id) return i;
+      const updated = Object.assign({}, i, { margin: mg });
+      if (priceMode === 'direct' && !isNaN(sp)) {
+        updated.sellPriceDirect = sp;
+        updated.sellPrice = sp;
+      } else {
+        delete updated.sellPriceDirect;
+        updated.sellPrice = Math.round((i.lastPrice || 0) * (1 + (mg || 0) / 100) * 100) / 100;
+      }
+      return updated;
+    }));
+    setShowPriceEdit(null);
+    showT('Price updated');
+  }
+
+  // ---- Computed ----
+  const expiringSoon = getExpiringLots(productInventory, 30);
+  const expiringCritical = expiringSoon.filter(function(e) { return e.status === 'expired' || e.status === 'critical'; });
+
+  // ---- Modals ----
+  const prodFormModal = showProdForm ? h(Modal, {
+    title: editingProd ? 'Edit Product' : 'Add Product',
+    onClose: function() { setShowProdForm(false); setEditingProd(null); },
+    width: 560
+  },
+    h(Inp, {
+      label: 'Product Name',
+      value: prodForm.name,
+      onChange: function(v) { setProdForm(Object.assign({}, prodForm, { name: v })); },
+      placeholder: 'e.g. Cydectin Pour-On 250ml'
+    }),
+    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+      h(Sel, {
+        label: 'Category',
+        value: prodForm.category,
+        onChange: function(v) { setProdForm(Object.assign({}, prodForm, { category: v })); },
+        options: PRODUCT_CATEGORIES.map(function(c) { return { value: c.key, label: c.label }; })
+      }),
+      h(Sel, {
+        label: 'Unit',
+        value: prodForm.unit,
+        onChange: function(v) { setProdForm(Object.assign({}, prodForm, { unit: v })); },
+        options: PRODUCT_UNITS.map(function(u) { return { value: u, label: u }; })
+      })
+    ),
+    h(Inp, {
+      label: 'Manufacturer (optional)',
+      value: prodForm.manufacturer,
+      onChange: function(v) { setProdForm(Object.assign({}, prodForm, { manufacturer: v })); },
+      placeholder: 'e.g. Zoetis'
+    }),
+    h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 0' } },
+      h('input', {
+        type: 'checkbox',
+        checked: !!prodForm.prescriptionRequired,
+        onChange: function(e) { setProdForm(Object.assign({}, prodForm, { prescriptionRequired: e.target.checked })); },
+        style: { width: 16, height: 16 }
+      }),
+      h('span', { style: { fontSize: 13, color: C.earth } }, 'Prescription required (controlled product)')
+    ),
+    h(Inp, {
+      label: 'Notes (optional)',
+      multiline: true,
+      rows: 3,
+      value: prodForm.notes,
+      onChange: function(v) { setProdForm(Object.assign({}, prodForm, { notes: v })); },
+      placeholder: 'Use, dosage, withdrawal periods, storage requirements...'
+    }),
+    h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
+      h(Btn, { onClick: function() { setShowProdForm(false); setEditingProd(null); }, variant: 'secondary' }, 'Cancel'),
+      h(Btn, { onClick: saveProduct, variant: 'success' }, editingProd ? 'Update Product' : 'Add Product')
+    )
+  ) : null;
+
+  const stockModal = showAddStock ? h(Modal, {
+    title: 'Add Product Stock',
+    onClose: function() { setShowAddStock(false); },
+    width: 560
+  },
+    h(Sel, {
+      label: 'Product',
+      value: stockForm.productId,
+      onChange: function(v) { setStockForm(Object.assign({}, stockForm, { productId: v })); },
+      options: [{ value: '', label: 'Select product...' }].concat(
+        products.slice().sort(function(a, b) { return a.name.localeCompare(b.name); })
+          .map(function(p) {
+            const inv = productInventory.find(function(i) { return i.id === p.id; });
+            const stock = inv ? inv.qty : 0;
+            return { value: p.id, label: p.name + ' (' + stock + ' ' + (p.unit || 'units') + ' on hand)' };
+          })
+      )
+    }),
+    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+      h(Inp, { label: 'Quantity', value: stockForm.qty, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { qty: v })); }, type: 'number', placeholder: 'units bought' }),
+      h(Inp, { label: 'Cost per unit (KES)', value: stockForm.costPerUnit, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { costPerUnit: v })); }, type: 'number' })
+    ),
+    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+      h(Inp, { label: 'Purchase Date', value: stockForm.purchaseDate, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { purchaseDate: v })); }, type: 'date' }),
+      h(Inp, { label: 'Supplier (optional)', value: stockForm.supplier, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { supplier: v })); } })
+    ),
+    h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 8 } }, 'Lot tracking (recommended for vet products)'),
+    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+      h(Inp, { label: 'Expiry Date', value: stockForm.expiryDate, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { expiryDate: v })); }, type: 'date' }),
+      h(Inp, { label: 'Manufacturer Batch #', value: stockForm.manufacturerBatch, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { manufacturerBatch: v })); }, placeholder: 'e.g. LOT-A4521' })
+    ),
+    h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
+      h(Btn, { onClick: function() { setShowAddStock(false); }, variant: 'secondary' }, 'Cancel'),
+      h(Btn, {
+        onClick: addStock,
+        variant: 'success',
+        disabled: !stockForm.productId || !stockForm.qty || !stockForm.costPerUnit
+      }, 'Record Purchase')
+    )
+  ) : null;
+
+  // Lots modal
+  const liveLotsRow = showLots ? productInventory.find(function(i) { return i.id === showLots.id; }) : null;
+  const lotsModal = (showLots && liveLotsRow) ? h(Modal, {
+    title: 'Lots — ' + (liveLotsRow.name || ''),
+    onClose: function() { setShowLots(null); },
+    width: 760
+  },
+    h('div', { style: { fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.5 } },
+      'Each purchase is its own lot. Lots are consumed FIFO (oldest first) by default. Expiry-warning rows are highlighted.'),
+    (liveLotsRow.lots || []).length === 0 ? h('div', {
+      style: { padding: 24, textAlign: 'center', color: C.muted, background: C.cream, borderRadius: 10 }
+    }, 'No lots yet.') : h('div', null,
+      h('div', {
+        style: {
+          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 0.8fr 40px',
+          gap: 6, padding: '6px 0',
+          fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+          color: C.muted, fontFamily: "'DM Mono',monospace",
+          letterSpacing: 1.2, borderBottom: '2px solid ' + C.border
+        }
+      },
+        h('div', null, 'Purchased'),
+        h('div', null, 'Supplier'),
+        h('div', null, 'Mfr Batch'),
+        h('div', null, 'Expiry'),
+        h('div', { style: { textAlign: 'right' } }, 'Remaining'),
+        h('div', { style: { textAlign: 'right' } }, 'Cost/unit'),
+        h('div')
+      ),
+      sortedLotsFIFO(liveLotsRow.lots).map(function(lot, i) {
+        const exStatus = expiryStatus(lot.expiryDate);
+        const exStyle = expiryBadgeStyle(exStatus);
+        const dleft = daysUntilExpiry(lot.expiryDate);
+        return h('div', {
+          key: lot.lotId,
+          style: {
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 0.8fr 40px',
+            gap: 6, padding: '8px 0',
+            alignItems: 'center', fontSize: 12,
+            borderBottom: '1px solid ' + C.border,
+            background: i === 0 ? '#f0f9f4' : 'transparent'
+          }
+        },
+          h('div', { style: { color: C.earth } },
+            lot.purchaseDate,
+            i === 0 ? h('div', { style: { fontSize: 9, color: C.grass, fontWeight: 700 } }, 'NEXT TO USE') : null
+          ),
+          h('div', { style: { color: C.muted, fontSize: 11 } }, lot.supplier || '-'),
+          h('div', { style: { color: C.muted, fontSize: 11, fontFamily: "'DM Mono',monospace" } }, lot.manufacturerBatch || '-'),
+          h('div', null,
+            lot.expiryDate ? h('span', {
+              style: {
+                display: 'inline-block', padding: '2px 7px',
+                background: exStyle.bg, color: exStyle.fg,
+                border: '1px solid ' + exStyle.border,
+                borderRadius: 12, fontSize: 11, fontWeight: 700,
+                fontFamily: "'DM Mono',monospace"
+              }
+            }, lot.expiryDate + (dleft != null ? ' (' + (dleft < 0 ? Math.abs(dleft) + 'd ago' : dleft + 'd') + ')' : ''))
+              : h('span', { style: { color: C.muted, fontSize: 11 } }, '-')
+          ),
+          h('div', {
+            style: { textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 700, color: C.earth }
+          }, fmt(lot.remainingQty, 0) + ' ' + (liveLotsRow.unit || 'u') + ' / ' + fmt(lot.originalQty, 0)),
+          h('div', {
+            style: { textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 700, color: C.earth }
+          }, fmtKES(lot.costPerKg)),
+          user && user.role === 'admin' ? h('button', {
+            onClick: function() { deleteLot(liveLotsRow.id, lot.lotId); },
+            style: { border: 'none', background: 'transparent', color: C.danger, cursor: 'pointer', fontSize: 14 },
+            title: 'Delete this lot'
+          }, '\u2715') : h('div')
+        );
+      })
+    ),
+    h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
+      h(Btn, { onClick: function() { setShowLots(null); }, variant: 'secondary' }, 'Close')
+    )
+  ) : null;
+
+  const priceModal = showPriceEdit ? h(Modal, {
+    title: 'Set Sell Price — ' + showPriceEdit.name,
+    onClose: function() { setShowPriceEdit(null); },
+    width: 460
+  },
+    h('div', {
+      style: { background: C.parchment, borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: C.soil }
+    }, 'Latest buy price: ', h('strong', null, fmtKES(showPriceEdit.lastPrice || 0) + '/unit')),
+    h('div', {
+      style: { display: 'flex', gap: 0, marginBottom: 14, borderRadius: 8, overflow: 'hidden', border: '1px solid ' + C.border }
+    },
+      ['margin', 'direct'].map(function(m) {
+        const btnStyle = {
+          flex: 1, padding: '9px 0', border: 'none', cursor: 'pointer',
+          fontWeight: priceMode === m ? 700 : 400,
+          background: priceMode === m ? C.earth : 'white',
+          color: priceMode === m ? 'white' : C.muted, fontSize: 13
+        };
+        return h('button', { key: m, onClick: function() { setPriceMode(m); }, style: btnStyle }, m === 'margin' ? 'Margin %' : 'Fixed Price');
+      })
+    ),
+    priceMode === 'margin' ? h('div', null,
+      h(Inp, { label: 'Margin %', value: marginVal, onChange: setMarginVal, type: 'number' }),
+      h('div', {
+        style: { background: '#f0f9f4', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: C.grass, fontWeight: 700 }
+      }, 'Sell Price = ' + fmtKES(Math.round((showPriceEdit.lastPrice || 0) * (1 + (parseFloat(marginVal) || 0) / 100) * 100) / 100) + '/unit')
+    ) : h('div', null,
+      h(Inp, { label: 'Direct Sell Price (KES/unit)', value: directPrice, onChange: setDirectPrice, type: 'number' })
+    ),
+    h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
+      h(Btn, { onClick: function() { setShowPriceEdit(null); }, variant: 'secondary' }, 'Cancel'),
+      h(Btn, { onClick: savePriceEdit, variant: 'success' }, 'Save Sell Price')
+    )
+  ) : null;
+
+  // ---- Catalog table ----
+  const prodCols = [
+    { key: 'name', label: 'Product', render: function(r) {
+      return h('div', null,
+        h('span', { style: { fontWeight: 600, color: C.earth } }, r.name),
+        r.prescriptionRequired ? h('span', {
+          style: { marginLeft: 6, fontSize: 10, padding: '1px 6px', background: '#fde8e8', color: C.danger, borderRadius: 8, fontWeight: 700 }
+        }, 'Rx') : null
+      );
+    }},
+    { key: 'category', label: 'Category', render: function(r) {
+      return h(Badge, { color: productCatColor(r.category) }, productCatLabel(r.category));
+    }},
+    { key: 'unit', label: 'Unit' },
+    { key: 'manufacturer', label: 'Manufacturer', render: function(r) { return r.manufacturer || '-'; } },
+    { key: 'stock', label: 'In Stock', render: function(r) {
+      const inv = productInventory.find(function(i) { return i.id === r.id; });
+      const qty = inv ? inv.qty : 0;
+      return h('span', {
+        style: { fontFamily: "'DM Mono',monospace", fontWeight: 700, color: qty > 0 ? C.grass : C.muted }
+      }, qty + ' ' + (r.unit || 'u'));
+    }},
+    { key: 'sellPrice', label: 'Sell Price', render: function(r) {
+      const inv = productInventory.find(function(i) { return i.id === r.id; });
+      if (!inv || !inv.lastPrice) return h('span', { style: { color: C.muted, fontSize: 11 } }, '-');
+      return h('span', { style: { fontWeight: 700, color: C.grass } }, fmtKES(getSellPrice(inv)));
+    }},
+    { key: 'actions', label: '', sortable: false, render: function(r) {
+      return h('div', { style: { display: 'flex', gap: 4 } },
+        h(Btn, { size: 'sm', variant: 'secondary', onClick: function() { openAddStock(r.id); } }, '+ Stock'),
+        h(Btn, { size: 'sm', variant: 'secondary', onClick: function() { openProdEdit(r); } }, 'Edit'),
+        user && user.role === 'admin' ? h(Btn, { size: 'sm', variant: 'danger', onClick: function() { deleteProduct(r); } }, 'Del') : null
+      );
+    }}
+  ];
+
+  // ---- Inventory table ----
+  const inventoryRows = productInventory.map(function(invRow) {
+    const prod = products.find(function(p) { return p.id === invRow.id; });
+    return Object.assign({}, invRow, {
+      productName: invRow.name || (prod ? prod.name : '?'),
+      category: invRow.category || (prod ? prod.category : 'other'),
+      unit: invRow.unit || (prod ? prod.unit : 'unit'),
+      lotCount: (invRow.lots || []).length,
+      // Earliest expiry across lots with stock
+      earliestExpiry: (function() {
+        const dates = (invRow.lots || [])
+          .filter(function(l) { return l.remainingQty > 0 && l.expiryDate; })
+          .map(function(l) { return l.expiryDate; })
+          .sort();
+        return dates[0] || null;
+      })()
+    });
+  });
+
+  const invCols = [
+    { key: 'productName', label: 'Product' },
+    { key: 'category', label: 'Category', render: function(r) {
+      return h(Badge, { color: productCatColor(r.category) }, productCatLabel(r.category));
+    }},
+    { key: 'qty', label: 'On Hand', render: function(r) {
+      return h('span', { style: { fontFamily: "'DM Mono',monospace", fontWeight: 700, color: r.qty > 0 ? C.grass : C.danger } },
+        r.qty + ' ' + (r.unit || 'u'));
+    }},
+    { key: 'lotCount', label: 'Lots', render: function(r) {
+      return r.lotCount > 0 ? r.lotCount : h('span', { style: { color: C.muted } }, '0');
+    }},
+    { key: 'earliestExpiry', label: 'Next Expiry', render: function(r) {
+      if (!r.earliestExpiry) return h('span', { style: { color: C.muted, fontSize: 11 } }, '-');
+      const status = expiryStatus(r.earliestExpiry);
+      const style = expiryBadgeStyle(status);
+      const d = daysUntilExpiry(r.earliestExpiry);
+      return h('span', {
+        style: {
+          display: 'inline-block', padding: '2px 7px',
+          background: style.bg, color: style.fg, border: '1px solid ' + style.border,
+          borderRadius: 12, fontSize: 11, fontWeight: 700, fontFamily: "'DM Mono',monospace"
+        }
+      }, r.earliestExpiry + (d != null ? ' (' + (d < 0 ? Math.abs(d) + 'd ago' : d + 'd') + ')' : ''));
+    }},
+    { key: 'sellPrice', label: 'Sell Price', render: function(r) {
+      return h('span', { style: { fontWeight: 700, color: C.grass } }, fmtKES(getSellPrice(r)) + '/' + (r.unit || 'u'));
+    }},
+    { key: 'value', label: 'Value', render: function(r) {
+      const v = (r.lots || []).reduce(function(s, l) { return s + l.remainingQty * (l.costPerKg || 0); }, 0);
+      return fmtKES(v);
+    }},
+    { key: 'actions', label: '', sortable: false, render: function(r) {
+      return h('div', { style: { display: 'flex', gap: 4 } },
+        h(Btn, { size: 'sm', variant: 'secondary', onClick: function() { setShowLots(r); } }, 'Lots'),
+        h(Btn, { size: 'sm', variant: 'secondary', onClick: function() { openPriceEdit(r); } }, 'Price')
+      );
+    }}
+  ];
+
+  const purchCols = [
+    { key: 'date', label: 'Date' },
+    { key: 'productName', label: 'Product' },
+    { key: 'qty', label: 'Qty' },
+    { key: 'costPerUnit', label: 'Cost/unit', render: function(r) { return fmtKES(r.costPerUnit); } },
+    { key: 'total', label: 'Total', render: function(r) { return fmtKES(r.total); } },
+    { key: 'supplier', label: 'Supplier', render: function(r) { return r.supplier || '-'; } },
+    { key: 'expiryDate', label: 'Expiry', render: function(r) { return r.expiryDate || '-'; } },
+    { key: 'manufacturerBatch', label: 'Batch #', render: function(r) { return r.manufacturerBatch || '-'; } }
+  ];
+
+  // ---- Render ----
+  return h('div', { style: { padding: '0 26px 26px' } },
+    toast ? h(Toast, { msg: toast.msg, type: toast.type }) : null,
+    prodFormModal,
+    stockModal,
+    lotsModal,
+    priceModal,
+    h(PageHdr, {
+      title: '\u{1F9F4} Products',
+      subtitle: 'Vet products, supplements, supplies — sold via Direct Sale only',
+      action: h('div', { style: { display: 'flex', gap: 8 } },
+        h(Btn, { onClick: function() { openAddStock(); }, variant: 'secondary' }, '+ Add Stock'),
+        h(Btn, { onClick: openProdAdd, variant: 'success' }, '+ New Product')
+      )
+    }),
+    // Expiry alert banner
+    expiringSoon.length > 0 ? h('div', {
+      style: {
+        marginBottom: 14, padding: '12px 16px',
+        background: expiringCritical.length > 0 ? '#fde8e8' : '#fff4e0',
+        border: '2px solid ' + (expiringCritical.length > 0 ? C.danger : C.warning),
+        borderRadius: 10
+      }
+    },
+      h('div', {
+        style: { fontSize: 13, fontWeight: 700, color: expiringCritical.length > 0 ? C.danger : C.warning, marginBottom: 6 }
+      }, '\u{26A0} ' + expiringSoon.length + ' lot' + (expiringSoon.length === 1 ? '' : 's') + ' expiring within 30 days' +
+         (expiringCritical.length > 0 ? ' (' + expiringCritical.length + ' critical/expired)' : '')),
+      h('div', { style: { fontSize: 11, color: C.earth, lineHeight: 1.6 } },
+        expiringSoon.slice(0, 5).map(function(e, i) {
+          return h('div', { key: i },
+            h('strong', null, e.productName),
+            ' \u2022 ',
+            e.remainingQty + ' ' + (e.unit || 'u'),
+            ' \u2022 ',
+            h('span', { style: { color: e.status === 'expired' ? C.danger : (e.status === 'critical' ? C.danger : C.warning) } },
+              e.daysLeft < 0 ? 'EXPIRED ' + Math.abs(e.daysLeft) + ' days ago' : e.daysLeft + ' days left'),
+            e.manufacturerBatch ? ' \u2022 batch ' + e.manufacturerBatch : ''
+          );
+        }),
+        expiringSoon.length > 5 ? h('div', { style: { color: C.muted, fontStyle: 'italic', marginTop: 4 } },
+          '+ ' + (expiringSoon.length - 5) + ' more') : null
+      )
+    ) : null,
+    // Tabs
+    h('div', {
+      style: {
+        display: 'flex', gap: 0, marginBottom: 14, borderRadius: 10,
+        background: 'white', border: '1px solid ' + C.border, overflow: 'hidden'
+      }
+    },
+      [
+        { key: 'catalog', label: '\u{1F4D1} Catalog (' + products.length + ')' },
+        { key: 'inventory', label: '\u{1F4E6} Inventory (' + productInventory.length + ')' },
+        { key: 'purchases', label: '\u{1F4DD} Purchases (' + productPurchases.length + ')' }
+      ].map(function(t) {
+        return h('button', {
+          key: t.key,
+          onClick: function() { setTab(t.key); },
+          style: {
+            flex: 1, padding: '11px 0', border: 'none', cursor: 'pointer',
+            background: tab === t.key ? C.earth : 'white',
+            color: tab === t.key ? 'white' : C.muted,
+            fontWeight: tab === t.key ? 700 : 500,
+            fontSize: 13,
+            borderRight: '1px solid ' + C.border
+          }
+        }, t.label);
+      })
+    ),
+    // Tab content
+    tab === 'catalog' ? h(Card, null,
+      products.length === 0 ? h('div', {
+        style: { padding: 30, textAlign: 'center', color: C.muted, fontSize: 13 }
+      }, 'No products yet. Click "+ New Product" to add one.')
+        : h(Tbl, { rows: products, cols: prodCols })
+    ) : null,
+    tab === 'inventory' ? h(Card, null,
+      productInventory.length === 0 ? h('div', {
+        style: { padding: 30, textAlign: 'center', color: C.muted, fontSize: 13 }
+      }, 'No stock yet.')
+        : h(Tbl, { rows: inventoryRows, cols: invCols })
+    ) : null,
+    tab === 'purchases' ? h(Card, null,
+      productPurchases.length === 0 ? h('div', {
+        style: { padding: 30, textAlign: 'center', color: C.muted, fontSize: 13 }
+      }, 'No purchases yet.')
+        : h(Tbl, { rows: productPurchases.slice().sort(function(a, b) { return b.date.localeCompare(a.date); }), cols: purchCols })
     ) : null
   );
 }
@@ -5071,6 +5838,9 @@ export default function Pages(props) {
     },
     ingredients: function() {
       return user.role === 'admin' ? h(IngredientsPage, null) : h(DashboardPage, null);
+    },
+    products: function() {
+      return user.role === 'admin' ? h(ProductsPage, null) : h(DashboardPage, null);
     },
     nutrition: function() {
       return user.role === 'admin' ? h(NutritionPage, null) : h(DashboardPage, null);

@@ -15,7 +15,8 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const COLLECTIONS = [
   'inventory','purchases','sales','customers',
-  'stockLedger','ingredients','users','animalReqs','savedFormulas'
+  'stockLedger','ingredients','users','animalReqs','savedFormulas',
+  'products','productInventory','productPurchases'
 ];
 
 function colPath(name) {

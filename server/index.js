@@ -14,7 +14,8 @@ const PORT = process.env.PORT || 3001;
 // ── ALLOWED COLLECTIONS ───────────────────────────────────────────────────────
 const ALLOWED = new Set([
   'inventory','purchases','sales','customers',
-  'stockLedger','ingredients','users','animalReqs','savedFormulas'
+  'stockLedger','ingredients','users','animalReqs','savedFormulas',
+  'products','productInventory','productPurchases'
 ]);
 
 // ── MIDDLEWARE ────────────────────────────────────────────────────────────────
@@ -1772,7 +1773,7 @@ app.get('/health', (req, res) => {
       writable = false;
     }
     // Per-collection record counts
-    const COLS = ['inventory','purchases','sales','customers','stockLedger','ingredients','users','animalReqs','savedFormulas'];
+    const COLS = ['inventory','purchases','sales','customers','stockLedger','ingredients','users','animalReqs','savedFormulas','products','productInventory','productPurchases'];
     for (const c of COLS) {
       try {
         const r = db.getCollection(c);

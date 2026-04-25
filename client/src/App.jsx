@@ -75,6 +75,12 @@ export default function App() {
   const [purchases, setPurchState] = useState(() => db.get("purchases", []));
   const [customers, setCustState] = useState(() => db.get("customers", []));
   const [savedFormulas, setSavedFormulasState] = useState(() => db.get("savedFormulas", []));
+  const [products, setProductsState] = useState(() => db.get("products", []));
+  const [productInventory, setProdInvState] = useState(() => {
+    const cached = db.get("productInventory", null);
+    return (cached && cached.length > 0) ? migrateInventoryLots(cached) : [];
+  });
+  const [productPurchases, setProdPurchState] = useState(() => db.get("productPurchases", []));
 
   // Setters: update state, cache to localStorage, and push to server
   const setIngredients = v => { setIngrState(v); db.set("ingredients", v); serverPush("ingredients", v); };
@@ -83,6 +89,9 @@ export default function App() {
   const setPurchases   = v => { setPurchState(v); db.set("purchases", v);  serverPush("purchases", v); };
   const setCustomers   = v => { setCustState(v);  db.set("customers", v);  serverPush("customers", v); };
   const setSavedFormulas = v => { setSavedFormulasState(v); db.set("savedFormulas", v); serverPush("savedFormulas", v); };
+  const setProducts          = v => { setProductsState(v);    db.set("products", v);    serverPush("products", v); };
+  const setProductInventory  = v => { const m = migrateInventoryLots(v); setProdInvState(m); db.set("productInventory", m); serverPush("productInventory", m); };
+  const setProductPurchases  = v => { setProdPurchState(v);   db.set("productPurchases", v); serverPush("productPurchases", v); };
 
   // Startup: pull ALL data from server before showing login
   useEffect(() => {
@@ -95,6 +104,9 @@ export default function App() {
       if (data.ingredients?.data)   { setIngrState(data.ingredients.data); db.set("ingredients", data.ingredients.data); }
       if (data.animalReqs?.data)    db.set("animalReqs", data.animalReqs.data);
       if (data.savedFormulas?.data) { setSavedFormulasState(data.savedFormulas.data); db.set("savedFormulas", data.savedFormulas.data); }
+      if (data.products?.data)         { setProductsState(data.products.data); db.set("products", data.products.data); }
+      if (data.productInventory?.data) { const m=migrateInventoryLots(data.productInventory.data); setProdInvState(m); db.set("productInventory", m); }
+      if (data.productPurchases?.data) { setProdPurchState(data.productPurchases.data); db.set("productPurchases", data.productPurchases.data); }
       // Users go to localStorage for login check
       const serverUsers = data.users?.data;
       if (serverUsers && serverUsers.length > 0) {
@@ -127,6 +139,9 @@ export default function App() {
         if (data.ingredients?.data)   { setIngrState(data.ingredients.data); db.set("ingredients", data.ingredients.data); }
         if (data.animalReqs?.data)    db.set("animalReqs", data.animalReqs.data);
         if (data.savedFormulas?.data) { setSavedFormulasState(data.savedFormulas.data); db.set("savedFormulas", data.savedFormulas.data); }
+        if (data.products?.data)         { setProductsState(data.products.data); db.set("products", data.products.data); }
+        if (data.productInventory?.data) { const m=migrateInventoryLots(data.productInventory.data); setProdInvState(m); db.set("productInventory", m); }
+        if (data.productPurchases?.data) { setProdPurchState(data.productPurchases.data); db.set("productPurchases", data.productPurchases.data); }
         if (data.users?.data)         db.set("users", data.users.data);
       });
     }, 60000);
@@ -178,6 +193,9 @@ export default function App() {
     user, ingredients, setIngredients, inventory, setInventory,
     sales, setSales, purchases, setPurchases, customers, setCustomers,
     savedFormulas, setSavedFormulas,
+    products, setProducts,
+    productInventory, setProductInventory,
+    productPurchases, setProductPurchases,
     // Helpers passed through context so pages can use them
     C, uid, today, dateRange, fmt, fmtKES,
     buildCategories,
