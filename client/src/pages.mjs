@@ -2313,6 +2313,8 @@ function FormulatorPage(props) {
               const NUT_INFO = [
                 { key: 'cp', label: 'Crude Protein', unit: '%' },
                 { key: 'me', label: 'Metabolisable Energy', unit: 'kcal/kg' },
+                { key: 'fat', label: 'Fat', unit: '%' },
+                { key: 'fibre', label: 'Fibre', unit: '%' },
                 { key: 'ca', label: 'Calcium', unit: '%' },
                 { key: 'p', label: 'Phosphorus', unit: '%' },
                 { key: 'lys', label: 'Lysine', unit: '%' },
