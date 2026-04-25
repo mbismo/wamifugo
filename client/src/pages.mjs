@@ -883,21 +883,42 @@ function InventoryPage() {
     if (!ns.itemId || !ns.qty || !ns.costPerKg) return;
     const qty = parseFloat(ns.qty);
     const cost = parseFloat(ns.costPerKg);
-    const item = inventory.find(function(i) { return i.id === ns.itemId; });
-    const newInv = inventory.map(function(i) {
-      if (i.id !== ns.itemId) return i;
-      const sp = i.sellPriceDirect || Math.round(cost * (1 + (i.margin || 20) / 100) * 100) / 100;
-      return Object.assign({}, i, { qty: i.qty + qty, lastPrice: cost, sellPrice: sp });
-    });
+    const ingDef = ingredients.find(function(i) { return i.id === ns.itemId; });
+    const existingInv = inventory.find(function(i) { return i.id === ns.itemId; });
+
+    let newInv;
+    if (existingInv) {
+      newInv = inventory.map(function(i) {
+        if (i.id !== ns.itemId) return i;
+        const sp = i.sellPriceDirect || Math.round(cost * (1 + (i.margin || 20) / 100) * 100) / 100;
+        return Object.assign({}, i, { qty: i.qty + qty, lastPrice: cost, sellPrice: sp });
+      });
+    } else {
+      // First time stocking this ingredient — create the inventory row
+      const sp = Math.round(cost * 1.20 * 100) / 100; // default 20% margin
+      const newRow = {
+        id: ns.itemId,
+        name: ingDef ? ingDef.name : '(unknown)',
+        category: ingDef ? ingDef.category : 'energy',
+        unit: 'kg',
+        qty: qty,
+        lastPrice: cost,
+        sellPrice: sp,
+        margin: 20
+      };
+      newInv = inventory.concat([newRow]);
+    }
     setInventory(newInv);
+
+    const itemName = ingDef ? ingDef.name : (existingInv ? existingInv.name : '');
     setPurchases(purchases.concat([{
-      id: uid(), itemId: ns.itemId, itemName: item ? item.name : '',
+      id: uid(), itemId: ns.itemId, itemName: itemName,
       qty: qty, costPerKg: cost, total: qty * cost, date: ns.date, supplier: ns.supplier
     }]));
     const ledger = db.get('stockLedger', []);
     const entry = {
       id: uid(), type: 'PURCHASE', date: ns.date,
-      itemId: ns.itemId, itemName: item ? item.name : '',
+      itemId: ns.itemId, itemName: itemName,
       qty: qty, costPerKg: cost, total: qty * cost,
       supplier: ns.supplier, by: user ? user.name : ''
     };
@@ -1018,7 +1039,14 @@ function InventoryPage() {
       value: ns.itemId,
       onChange: function(v) { setNs(Object.assign({}, ns, { itemId: v })); },
       options: [{ value: '', label: 'Select ingredient...' }].concat(
-        inventory.map(function(i) { return { value: i.id, label: i.name }; })
+        ingredients
+          .slice()
+          .sort(function(a, b) { return a.name.localeCompare(b.name); })
+          .map(function(i) {
+            const inv = inventory.find(function(x) { return x.id === i.id; });
+            const stock = inv ? inv.qty : 0;
+            return { value: i.id, label: i.name + (stock > 0 ? ' (' + stock.toFixed(0) + ' kg in stock)' : ' (no stock)') };
+          })
       )
     }),
     h(Inp, { label: 'Quantity (kg)', value: ns.qty, onChange: function(v) { setNs(Object.assign({}, ns, { qty: v })); }, type: 'number' }),
