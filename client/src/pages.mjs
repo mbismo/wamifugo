@@ -1556,8 +1556,12 @@ function IngredientsPage() {
     }},
     { key: 'cp', label: 'CP %' },
     { key: 'me', label: 'ME kcal/kg' },
+    { key: 'fat', label: 'Fat %' },
+    { key: 'fibre', label: 'Fibre %' },
     { key: 'ca', label: 'Ca %' },
     { key: 'p', label: 'P %' },
+    { key: 'lys', label: 'Lys %' },
+    { key: 'met', label: 'Met %' },
     { key: 'maxIncl', label: 'Max %', render: function(r) {
       const v = r.maxIncl != null ? r.maxIncl : 100;
       return h('span', { style: { fontFamily: "'DM Mono',monospace", color: v < 100 ? C.warning : C.muted } },
@@ -3846,10 +3850,14 @@ function NutritionPage() {
   const cols = [
     { key: 'category', label: 'Category' },
     { key: 'stage', label: 'Stage' },
-    { key: 'cp', label: 'CP %', render: function(r) { return r.cp[0] + '-' + r.cp[1]; } },
-    { key: 'me', label: 'ME', render: function(r) { return r.me[0] + '-' + r.me[1]; } },
-    { key: 'ca', label: 'Ca %', render: function(r) { return r.ca[0] + '-' + r.ca[1]; } },
-    { key: 'p', label: 'P %', render: function(r) { return r.p[0] + '-' + r.p[1]; } },
+    { key: 'cp', label: 'CP %', render: function(r) { return r.cp ? r.cp[0] + '-' + r.cp[1] : '-'; } },
+    { key: 'me', label: 'ME', render: function(r) { return r.me ? r.me[0] + '-' + r.me[1] : '-'; } },
+    { key: 'fat', label: 'Fat %', render: function(r) { return r.fat ? r.fat[0] + '-' + r.fat[1] : '-'; } },
+    { key: 'fibre', label: 'Fibre %', render: function(r) { return r.fibre ? r.fibre[0] + '-' + r.fibre[1] : '-'; } },
+    { key: 'ca', label: 'Ca %', render: function(r) { return r.ca ? r.ca[0] + '-' + r.ca[1] : '-'; } },
+    { key: 'p', label: 'P %', render: function(r) { return r.p ? r.p[0] + '-' + r.p[1] : '-'; } },
+    { key: 'lys', label: 'Lys %', render: function(r) { return r.lys ? r.lys[0] + '-' + r.lys[1] : '-'; } },
+    { key: 'met', label: 'Met %', render: function(r) { return r.met ? r.met[0] + '-' + r.met[1] : '-'; } },
     { key: 'overrides', label: 'Caps', sortable: false, render: function(r) {
       const n = r.inclusionOverrides ? Object.keys(r.inclusionOverrides).length : 0;
       if (n === 0) return h('span', { style: { color: C.muted, fontSize: 11 } }, '-');
@@ -4362,68 +4370,78 @@ function ResourcesPage() {
   }
 
   const exports = [
-    { title: 'Ingredients', desc: 'Nutrient profiles, prices, inclusion limits',
+    { title: 'Ingredients Catalog', desc: 'Master list with full nutrient profile, max inclusion, and notes',
       onCSV: function() {
-        const headers = ['ID', 'Name', 'Category', 'CP%', 'ME kcal/kg', 'Ca%', 'P%', 'Lys%', 'Met%'];
+        const headers = ['ID', 'Name', 'Category',
+          'CP %', 'ME kcal/kg', 'Fat %', 'Fibre %', 'Ca %', 'P %', 'Lys %', 'Met %',
+          'Max Inclusion %', 'Nutritive Note', 'Anti-Nutritive Note'];
         const rows = [headers].concat(ingredients.map(function(i) {
-          return [i.id, i.name, i.category || '', i.cp || 0, i.me || 0, i.ca || 0, i.p || 0, i.lys || 0, i.met || 0];
+          return [i.id, i.name, i.category || '',
+            i.cp || 0, i.me || 0, i.fat || 0, i.fibre || 0, i.ca || 0, i.p || 0, i.lys || 0, i.met || 0,
+            i.maxIncl != null ? i.maxIncl : 100,
+            i.nutritiveNote || '', i.antiNote || ''];
         }));
-        dlCSV(rows, 'ingredients.csv');
-        showT('Ingredients exported');
+        dlCSV(rows, 'ingredients_catalog.csv');
+        showT('Ingredients catalog exported');
       },
       onPrint: function() {
-        printReport('Ingredient Register',
-          ingredients.map(function(i) { return [i.name, i.category || '', i.cp, i.me, i.ca, i.p]; }),
-          ['Ingredient', 'Category', 'CP%', 'ME', 'Ca%', 'P%']);
+        printReport('Ingredients Catalog',
+          ingredients.map(function(i) {
+            return [i.name, i.category || '',
+              i.cp || 0, i.me || 0, i.fat || 0, i.fibre || 0,
+              i.ca || 0, i.p || 0, i.lys || 0, i.met || 0,
+              (i.maxIncl != null ? i.maxIncl : 100) + '%'];
+          }),
+          ['Ingredient', 'Category', 'CP%', 'ME', 'Fat%', 'Fibre%', 'Ca%', 'P%', 'Lys%', 'Met%', 'Max %']);
       }
     },
-    { title: 'Inventory', desc: 'Current stock levels and valuations',
+    { title: 'Ingredient Inventory', desc: 'Current ingredient stock levels, prices, and value',
       onCSV: function() {
-        const headers = ['Name', 'Category', 'Stock (kg)', 'Buy Price', 'Sell Price', 'Stock Value'];
+        const headers = ['Name', 'Category', 'Stock (kg)', 'Buy Price (KES/kg)', 'Sell Price (KES/kg)', 'Stock Value (KES)'];
         const rows = [headers].concat(inventory.map(function(i) {
           return [i.name, i.category || '', i.qty || 0, i.lastPrice || 0, i.sellPrice || '', (i.qty || 0) * (i.lastPrice || 0)];
         }));
-        dlCSV(rows, 'inventory.csv');
-        showT('Inventory exported');
+        dlCSV(rows, 'ingredient_inventory.csv');
+        showT('Ingredient inventory exported');
       },
       onPrint: function() {
-        printReport('Inventory Report',
+        printReport('Ingredient Inventory',
           inventory.map(function(i) {
             return [i.name, i.qty + ' kg', 'KES ' + i.lastPrice, 'KES ' + ((i.qty || 0) * (i.lastPrice || 0)).toLocaleString()];
           }),
           ['Ingredient', 'Stock', 'Buy Price', 'Stock Value']);
       }
     },
-    { title: 'Sales', desc: 'All sales records with profit analysis',
+    { title: 'Sales Records', desc: 'All formulated and direct sales with profit analysis',
       onCSV: function() {
-        const headers = ['Date', 'Customer', 'Product', 'Batch kg', 'Revenue', 'Cost', 'Profit'];
+        const headers = ['Date', 'Type', 'Customer', 'Product', 'Qty', 'Revenue (KES)', 'Cost (KES)', 'Profit (KES)'];
         const rows = [headers].concat(sales.map(function(s) {
-          return [s.date, s.customerName || s.customer || '', s.product, s.batchKg,
+          return [s.date, s.type || 'formulated', s.customerName || s.customer || '', s.product, s.batchKg || '',
             s.total || s.totalRevenue || 0, s.cost || s.totalCost || 0, s.profit || 0];
         }));
-        dlCSV(rows, 'sales.csv');
-        showT('Sales exported');
+        dlCSV(rows, 'sales_records.csv');
+        showT('Sales records exported');
       },
       onPrint: function() {
-        printReport('Sales Report',
+        printReport('Sales Records',
           sales.map(function(s) {
-            return [s.date, s.customerName || s.customer || '', s.product, s.batchKg + 'kg',
+            return [s.date, s.customerName || s.customer || '', s.product, (s.batchKg || '') + (s.batchKg ? ' kg' : ''),
               'KES ' + (s.total || s.totalRevenue || 0).toLocaleString()];
           }),
-          ['Date', 'Customer', 'Product', 'Batch', 'Revenue']);
+          ['Date', 'Customer', 'Product', 'Qty', 'Revenue']);
       }
     },
-    { title: 'Purchases', desc: 'All stock purchase records',
+    { title: 'Ingredient Purchases', desc: 'All ingredient stock purchase records',
       onCSV: function() {
-        const headers = ['Date', 'Ingredient', 'Qty (kg)', 'Cost/kg', 'Total', 'Supplier'];
+        const headers = ['Date', 'Ingredient', 'Qty (kg)', 'Cost/kg (KES)', 'Total (KES)', 'Supplier'];
         const rows = [headers].concat(purchases.map(function(p) {
           return [p.date, p.itemName, p.qty, p.costPerKg, p.total, p.supplier || ''];
         }));
-        dlCSV(rows, 'purchases.csv');
-        showT('Purchases exported');
+        dlCSV(rows, 'ingredient_purchases.csv');
+        showT('Ingredient purchases exported');
       },
       onPrint: function() {
-        printReport('Purchase Records',
+        printReport('Ingredient Purchases',
           purchases.map(function(p) {
             return [p.date, p.itemName, p.qty + 'kg', 'KES ' + p.costPerKg,
               'KES ' + (p.total || 0).toLocaleString(), p.supplier || ''];
@@ -4431,14 +4449,14 @@ function ResourcesPage() {
           ['Date', 'Ingredient', 'Qty', 'Cost/kg', 'Total', 'Supplier']);
       }
     },
-    { title: 'Customers', desc: 'Customer directory',
+    { title: 'Customer Directory', desc: 'Customer contact details and locations',
       onCSV: function() {
         const headers = ['Name', 'Phone', 'Email', 'Location'];
         const rows = [headers].concat(customers.map(function(c) {
           return [c.name, c.phone || '', c.email || '', c.location || ''];
         }));
-        dlCSV(rows, 'customers.csv');
-        showT('Customers exported');
+        dlCSV(rows, 'customer_directory.csv');
+        showT('Customer directory exported');
       },
       onPrint: function() {
         printReport('Customer Directory',
@@ -4446,21 +4464,43 @@ function ResourcesPage() {
           ['Name', 'Phone', 'Email', 'Location']);
       }
     },
-    { title: 'Animal Requirements', desc: 'Nutritional targets by species and stage',
+    { title: 'Animal Nutritional Targets', desc: 'Per-stage nutrient ranges and inclusion overrides',
       onCSV: function() {
-        const headers = ['Category', 'Stage', 'CP Min', 'CP Max', 'ME Min', 'ME Max', 'Ca Min', 'Ca Max', 'P Min', 'P Max'];
-        const rows = [headers].concat(SEED_ANIMAL_REQS.map(function(a) {
-          return [a.category, a.stage, a.cp[0], a.cp[1], a.me[0], a.me[1], a.ca[0], a.ca[1], a.p[0], a.p[1]];
+        const liveReqs = getAnimalReqs(db.get('animalReqs'));
+        const headers = ['Category', 'Stage',
+          'CP Min', 'CP Max', 'ME Min', 'ME Max',
+          'Fat Min', 'Fat Max', 'Fibre Min', 'Fibre Max',
+          'Ca Min', 'Ca Max', 'P Min', 'P Max',
+          'Lys Min', 'Lys Max', 'Met Min', 'Met Max',
+          'Inclusion Overrides'];
+        const fmtRange = function(r) { return r ? [r[0], r[1]] : ['', '']; };
+        const rows = [headers].concat(liveReqs.map(function(a) {
+          const overrides = a.inclusionOverrides && Object.keys(a.inclusionOverrides).length > 0
+            ? Object.entries(a.inclusionOverrides).map(function(e) { return e[0] + ':' + e[1] + '%'; }).join('; ')
+            : '';
+          return [a.category, a.stage].concat(
+            fmtRange(a.cp), fmtRange(a.me),
+            fmtRange(a.fat), fmtRange(a.fibre),
+            fmtRange(a.ca), fmtRange(a.p),
+            fmtRange(a.lys), fmtRange(a.met),
+            [overrides]
+          );
         }));
-        dlCSV(rows, 'animal_requirements.csv');
-        showT('Requirements exported');
+        dlCSV(rows, 'animal_nutritional_targets.csv');
+        showT('Nutritional targets exported');
       },
       onPrint: function() {
-        printReport('Animal Nutritional Requirements',
-          SEED_ANIMAL_REQS.map(function(a) {
-            return [a.category, a.stage, a.cp.join('-'), a.me.join('-'), a.ca.join('-'), a.p.join('-')];
+        const liveReqs = getAnimalReqs(db.get('animalReqs'));
+        const fmtRange = function(r) { return r ? r[0] + '-' + r[1] : '-'; };
+        printReport('Animal Nutritional Targets',
+          liveReqs.map(function(a) {
+            return [a.category, a.stage,
+              fmtRange(a.cp), fmtRange(a.me),
+              fmtRange(a.fat), fmtRange(a.fibre),
+              fmtRange(a.ca), fmtRange(a.p),
+              fmtRange(a.lys), fmtRange(a.met)];
           }),
-          ['Category', 'Stage', 'CP%', 'ME kcal/kg', 'Ca%', 'P%']);
+          ['Category', 'Stage', 'CP%', 'ME', 'Fat%', 'Fibre%', 'Ca%', 'P%', 'Lys%', 'Met%']);
       }
     },
     { title: 'Products Catalog', desc: 'Vet products, supplements, supplies',
