@@ -5351,9 +5351,129 @@ function ProductsPage() {
   };
   const [stockForm, setStockForm] = useState(blankStock);
 
+  const [showImport, setShowImport] = useState(false);
+  const [importStatus, setImportStatus] = useState(null);
+
   function showT(msg, type) {
     setToast({ msg: msg, type: type || 'success' });
     setTimeout(function() { setToast(null); }, 3500);
+  }
+
+  // ---- Excel import / export / template ----
+  function downloadProductsTemplate() {
+    const headers = ['Name', 'Category', 'Unit', 'Manufacturer', 'Prescription Required', 'Notes'];
+    const sample = [
+      ['Cydectin Pour-On 250ml', 'dewormer', 'bottle', 'Zoetis', 'No',
+        'Topical moxidectin pour-on. Effective against gastrointestinal nematodes, lungworms, and external parasites. 14-day milk withdrawal.'],
+      ['Newcastle Disease Vaccine', 'vaccine', 'vial', 'KEVEVAPI', 'Yes',
+        'Live attenuated vaccine. Reconstitute and administer via eye drop or drinking water. Cold chain required.'],
+      ['Maclick Super', 'mineral', 'kg', 'Coopers K Brands', 'No',
+        'Mineral lick block for dairy and beef cattle. Provides essential macro and trace minerals.']
+    ];
+    exportToExcel([headers].concat(sample), 'products_import_template.xlsx', 'Products');
+  }
+
+  function exportProducts() {
+    const headers = ['Name', 'Category', 'Unit', 'Manufacturer', 'Prescription Required', 'Notes', 'In Stock', 'Sell Price/unit', 'Lots', 'Earliest Expiry'];
+    const rows = products.map(function(p) {
+      const inv = productInventory.find(function(i) { return i.id === p.id; });
+      const stock = inv ? inv.qty : 0;
+      const sellP = inv ? getSellPrice(inv) : 0;
+      const lotCount = inv ? (inv.lots || []).length : 0;
+      const earliestExpiry = (function() {
+        if (!inv) return '';
+        const dates = (inv.lots || [])
+          .filter(function(l) { return l.remainingQty > 0 && l.expiryDate; })
+          .map(function(l) { return l.expiryDate; })
+          .sort();
+        return dates[0] || '';
+      })();
+      return [
+        p.name, p.category || '', p.unit || '', p.manufacturer || '',
+        p.prescriptionRequired ? 'Yes' : 'No',
+        p.notes || '',
+        stock, sellP, lotCount, earliestExpiry
+      ];
+    });
+    exportToExcel([headers].concat(rows), 'products_' + today() + '.xlsx', 'Products');
+    showT('Exported ' + products.length + ' products');
+  }
+
+  async function handleProductsImport(file) {
+    if (!file) return;
+    setImportStatus({ type: 'loading', msg: 'Reading Excel file...' });
+    try {
+      const result = await readExcelFile(file);
+      const rows = result.rows || [];
+      if (rows.length === 0) {
+        setImportStatus({ type: 'error', msg: 'The file has no data rows.' });
+        return;
+      }
+      const norm = function(k) { return String(k).toLowerCase().replace(/[^a-z0-9]/g, ''); };
+      const validCats = new Set(PRODUCT_CATEGORIES.map(function(c) { return c.key; }));
+      const validUnits = new Set(PRODUCT_UNITS);
+      const newProducts = [];
+      const errors = [];
+      rows.forEach(function(row, i) {
+        const keys = Object.keys(row);
+        const get = function(possibleNames) {
+          for (const name of possibleNames) {
+            const k = keys.find(function(x) { return norm(x) === norm(name); });
+            if (k) return row[k];
+          }
+          return null;
+        };
+        const name = get(['name', 'product', 'productname']);
+        if (!name) { errors.push('Row ' + (i + 2) + ': missing name'); return; }
+        let category = String(get(['category', 'type']) || 'other').toLowerCase().trim();
+        if (!validCats.has(category)) category = 'other';
+        let unit = String(get(['unit', 'uom']) || 'piece').toLowerCase().trim();
+        if (!validUnits.has(unit)) unit = 'piece';
+        const rxRaw = String(get(['prescriptionrequired', 'prescription', 'rx']) || '').toLowerCase().trim();
+        const prescriptionRequired = rxRaw === 'yes' || rxRaw === 'y' || rxRaw === 'true' || rxRaw === '1';
+        newProducts.push({
+          id: 'prod_' + uid(),
+          name: String(name).trim(),
+          category: category,
+          unit: unit,
+          manufacturer: String(get(['manufacturer', 'maker', 'brand']) || '').trim(),
+          prescriptionRequired: prescriptionRequired,
+          notes: String(get(['notes', 'description', 'usage']) || '').trim()
+        });
+      });
+      if (newProducts.length === 0) {
+        setImportStatus({ type: 'error', msg: 'No valid rows found. Errors: ' + errors.slice(0, 3).join('; ') });
+        return;
+      }
+      // Merge by name — update existing products with same name (preserve id), add new
+      const existingByName = {};
+      products.forEach(function(p) { existingByName[p.name.toLowerCase().trim()] = p; });
+      const toAdd = [];
+      let updated = products.slice();
+      newProducts.forEach(function(n) {
+        const key = n.name.toLowerCase().trim();
+        if (existingByName[key]) {
+          // Update existing — preserve original id
+          updated = updated.map(function(p) {
+            return p.id === existingByName[key].id
+              ? Object.assign({}, p, n, { id: p.id })
+              : p;
+          });
+        } else {
+          toAdd.push(n);
+        }
+      });
+      const final = updated.concat(toAdd);
+      setProducts(final);
+      const updatedCount = newProducts.length - toAdd.length;
+      setImportStatus({
+        type: 'success',
+        msg: 'Imported ' + newProducts.length + ' products: ' + toAdd.length + ' new, ' + updatedCount + ' updated' +
+          (errors.length > 0 ? ' (' + errors.length + ' rows skipped)' : '')
+      });
+    } catch (e) {
+      setImportStatus({ type: 'error', msg: 'Failed to read file: ' + e.message });
+    }
   }
 
   // ---- Catalog CRUD ----
@@ -5697,6 +5817,51 @@ function ProductsPage() {
     )
   ) : null;
 
+  const importModal = showImport ? h(Modal, {
+    title: 'Import Products from Excel',
+    onClose: function() { setShowImport(false); setImportStatus(null); },
+    width: 580
+  },
+    h('div', {
+      style: { background: C.parchment, borderRadius: 8, padding: '12px 14px', marginBottom: 14, fontSize: 13, color: C.soil, lineHeight: 1.6 }
+    },
+      h('div', { style: { fontWeight: 700, marginBottom: 6 } }, 'Expected column headers:'),
+      h('div', { style: { fontFamily: "'DM Mono',monospace", fontSize: 11 } },
+        'Name, Category, Unit, Manufacturer, Prescription Required, Notes'),
+      h('div', { style: { marginTop: 8, fontSize: 12 } },
+        'Categories: ' + PRODUCT_CATEGORIES.map(function(c) { return c.key; }).join(', ') + '. ',
+        'Units: ' + PRODUCT_UNITS.join(', ') + '. ',
+        'Existing products with matching names will be updated. Stock is managed separately via "+ Add Stock".')
+    ),
+    h(Btn, { onClick: downloadProductsTemplate, variant: 'secondary', size: 'sm', style: { marginBottom: 12 } }, '\u{1F4E5} Download Template'),
+    h('div', null,
+      h('label', {
+        style: {
+          display: 'block', padding: '22px',
+          border: '2px dashed ' + C.border, borderRadius: 10,
+          textAlign: 'center', cursor: 'pointer', background: C.cream
+        }
+      },
+        h('div', { style: { fontSize: 28, marginBottom: 7 } }, '\u{1F4C4}'),
+        h('div', { style: { fontSize: 13, color: C.earth, fontWeight: 600 } }, 'Click to choose an Excel file (.xlsx)'),
+        h('input', {
+          type: 'file',
+          accept: '.xlsx,.xls',
+          onChange: function(e) { handleProductsImport(e.target.files[0]); },
+          style: { display: 'none' }
+        })
+      )
+    ),
+    importStatus ? h('div', {
+      style: {
+        marginTop: 14, padding: '10px 14px', borderRadius: 8, fontSize: 13,
+        background: importStatus.type === 'error' ? '#fde8e8' : importStatus.type === 'success' ? '#f0f9f4' : C.parchment,
+        color: importStatus.type === 'error' ? C.danger : importStatus.type === 'success' ? C.grass : C.muted,
+        border: '1px solid ' + (importStatus.type === 'error' ? C.danger : importStatus.type === 'success' ? C.grass : C.border) + '44'
+      }
+    }, importStatus.msg) : null
+  ) : null;
+
   // ---- Catalog table ----
   const prodCols = [
     { key: 'name', label: 'Product', render: function(r) {
@@ -5810,10 +5975,22 @@ function ProductsPage() {
     stockModal,
     lotsModal,
     priceModal,
+    importModal,
     h(PageHdr, {
       title: '\u{1F9F4} Products',
       subtitle: 'Vet products, supplements, supplies — sold via Direct Sale only',
-      action: h('div', { style: { display: 'flex', gap: 8 } },
+      action: h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+        h(Btn, {
+          onClick: exportProducts,
+          variant: 'secondary',
+          size: 'sm',
+          disabled: products.length === 0
+        }, '\u{1F4E5} Export'),
+        h(Btn, {
+          onClick: function() { setShowImport(true); },
+          variant: 'secondary',
+          size: 'sm'
+        }, '\u{1F4E4} Import Excel'),
         h(Btn, { onClick: function() { openAddStock(); }, variant: 'secondary' }, '+ Add Stock'),
         h(Btn, { onClick: openProdAdd, variant: 'success' }, '+ New Product')
       )
