@@ -2211,7 +2211,9 @@ function FormulatorPage(props) {
       return {
         id: id, name: ing ? ing.name : id,
         pct: pct, dpct: dpct, qty: qty,
-        sellPricePerKg: sp, sellCost: qty * sp
+        sellPricePerKg: sp, sellCost: qty * sp,
+        nutritiveNote: (ing && ing.nutritiveNote) ? ing.nutritiveNote.trim() : '',
+        antiNote: (ing && ing.antiNote) ? ing.antiNote.trim() : ''
       };
     }) : [];
 
@@ -2812,6 +2814,29 @@ function FormulatorPage(props) {
           const inv = inventory.find(function(x) { return x.id === r.id; });
           const ok = inv && inv.qty >= r.qty;
           return h(Badge, { color: ok ? C.grass : C.danger }, ok ? '\u{2713} OK' : '\u{2717} Low');
+        }},
+        { key: 'notes', label: 'Notes', sortable: false, render: function(r) {
+          if (!r.nutritiveNote && !r.antiNote) return h('span', { style: { color: C.muted, fontSize: 11 } }, '-');
+          return h('div', { style: { display: 'flex', gap: 4 } },
+            r.nutritiveNote ? h('span', {
+              title: 'Nutritive: ' + r.nutritiveNote,
+              style: {
+                display: 'inline-flex', alignItems: 'center',
+                padding: '2px 7px', background: '#f0f9f4', color: C.grass,
+                border: '1px solid ' + C.leaf + '66',
+                borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: 'help'
+              }
+            }, '\u{1F33F}') : null,
+            r.antiNote ? h('span', {
+              title: 'Anti-nutritive: ' + r.antiNote,
+              style: {
+                display: 'inline-flex', alignItems: 'center',
+                padding: '2px 7px', background: '#fff4e0', color: C.warning,
+                border: '1px solid ' + C.warning + '66',
+                borderRadius: 12, fontSize: 11, fontWeight: 600, cursor: 'help'
+              }
+            }, '\u{26A0}') : null
+          );
         }}
       ],
       rows: formulaRows,
@@ -2831,6 +2856,63 @@ function FormulatorPage(props) {
       h(Btn, { onClick: doInitSale, variant: 'success' }, '\u{1F4B0} Sell This Batch')
     )
   ) : null;
+
+  // Ingredient notes briefing — shows nutritive/anti-nutritive notes from each
+  // ingredient currently in the formula, so the user gets the full agronomic
+  // context regardless of inclusion-cap warnings.
+  const notesBriefing = (function() {
+    if (!formula) return null;
+    const rowsWithNotes = formulaRows.filter(function(r) {
+      return r.nutritiveNote || r.antiNote;
+    });
+    if (rowsWithNotes.length === 0) return null;
+    return h(Card, { style: { marginBottom: 14 } },
+      h(CardTitle, null, '\u{1F4DD} Ingredient Notes'),
+      h('div', { style: { padding: '8px 18px 16px' } },
+        h('div', {
+          style: { fontSize: 11, color: C.muted, marginBottom: 12, lineHeight: 1.5, fontStyle: 'italic' }
+        }, 'Notes you added on the Ingredients page for the items in this formula.'),
+        rowsWithNotes.map(function(r, i) {
+          return h('div', {
+            key: r.id,
+            style: {
+              padding: '12px 0',
+              borderBottom: i < rowsWithNotes.length - 1 ? '1px solid ' + C.border : 'none'
+            }
+          },
+            h('div', {
+              style: { fontSize: 13, fontWeight: 700, color: C.earth, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }
+            },
+              r.name,
+              h('span', {
+                style: { fontSize: 11, color: C.muted, fontWeight: 400, fontFamily: "'DM Mono',monospace" }
+              }, r.dpct + '%')
+            ),
+            r.nutritiveNote ? h('div', {
+              style: {
+                background: '#f0f9f4', border: '1px solid ' + C.leaf + '55',
+                borderRadius: 8, padding: '8px 12px', marginBottom: r.antiNote ? 6 : 0,
+                fontSize: 12, color: C.earth, lineHeight: 1.5
+              }
+            },
+              h('strong', { style: { color: C.grass } }, '\u{1F33F} Nutritive: '),
+              r.nutritiveNote
+            ) : null,
+            r.antiNote ? h('div', {
+              style: {
+                background: '#fff4e0', border: '1px solid ' + C.warning + '55',
+                borderRadius: 8, padding: '8px 12px',
+                fontSize: 12, color: C.earth, lineHeight: 1.5
+              }
+            },
+              h('strong', { style: { color: C.warning } }, '\u{26A0} Anti-nutritive: '),
+              r.antiNote
+            ) : null
+          );
+        })
+      )
+    );
+  })();
 
   const nutrientCard = (formula && nutrients && reqs) ? h(Card, null,
     h(CardTitle, null, '\u{1F4CA} Nutritional Analysis'),
@@ -2948,6 +3030,7 @@ function FormulatorPage(props) {
     infeasibleCard,
     buySuggestionsCard,
     formulaCard,
+    notesBriefing,
     nutrientCard
   );
 }
