@@ -67,10 +67,14 @@ export default function App() {
   const [appReady, setAppReady] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [page, setPage] = useState("dashboard");
-  // Initialize from localStorage first, fall back to seeds if empty
+  // Initialize from localStorage first, fall back to seeds if empty.
+  // seedIngredients() handles BOTH cases: empty cache returns full seeds,
+  // populated cache returns existing rows + any newly seeded items missing by id.
   const [ingredients, setIngrState] = useState(() => {
-    const cached = db.get("ingredients", null);
-    return (cached && cached.length > 0) ? cached : seedIngredients();
+    const merged = seedIngredients();
+    // Persist the merge so localStorage is up to date and server-sync sees it
+    db.set("ingredients", merged);
+    return merged;
   });
   const [inventory, setInvState] = useState(() => {
     const cached = db.get("inventory", null);
@@ -108,7 +112,16 @@ export default function App() {
       if (data.purchases?.data)     { setPurchState(data.purchases.data); db.set("purchases", data.purchases.data); }
       if (data.sales?.data)         { setSalesState(data.sales.data); db.set("sales", data.sales.data); }
       if (data.customers?.data)     { setCustState(data.customers.data); db.set("customers", data.customers.data); }
-      if (data.ingredients?.data)   { setIngrState(data.ingredients.data); db.set("ingredients", data.ingredients.data); }
+      if (data.ingredients?.data)   {
+        // Merge server ingredients with any seeded items missing by id
+        // (so newly added compound feeds aren't wiped by a stale server list)
+        const serverIngs = data.ingredients.data;
+        const existingIds = new Set(serverIngs.map(i => i.id));
+        const missing = SEED_INGREDIENT_PROFILES.filter(i => !existingIds.has(i.id));
+        const merged = missing.length > 0 ? serverIngs.concat(missing) : serverIngs;
+        setIngrState(merged); db.set("ingredients", merged);
+        if (missing.length > 0) serverPush("ingredients", merged).catch(() => {});
+      }
       if (data.animalReqs?.data)    db.set("animalReqs", data.animalReqs.data);
       if (data.savedFormulas?.data) { setSavedFormulasState(data.savedFormulas.data); db.set("savedFormulas", data.savedFormulas.data); }
       if (data.products?.data)         { setProductsState(data.products.data); db.set("products", data.products.data); }
@@ -143,7 +156,14 @@ export default function App() {
         if (data.purchases?.data)     { setPurchState(data.purchases.data); db.set("purchases", data.purchases.data); }
         if (data.sales?.data)         { setSalesState(data.sales.data); db.set("sales", data.sales.data); }
         if (data.customers?.data)     { setCustState(data.customers.data); db.set("customers", data.customers.data); }
-        if (data.ingredients?.data)   { setIngrState(data.ingredients.data); db.set("ingredients", data.ingredients.data); }
+        if (data.ingredients?.data)   {
+          const serverIngs = data.ingredients.data;
+          const existingIds = new Set(serverIngs.map(i => i.id));
+          const missing = SEED_INGREDIENT_PROFILES.filter(i => !existingIds.has(i.id));
+          const merged = missing.length > 0 ? serverIngs.concat(missing) : serverIngs;
+          setIngrState(merged); db.set("ingredients", merged);
+          if (missing.length > 0) serverPush("ingredients", merged).catch(() => {});
+        }
         if (data.animalReqs?.data)    db.set("animalReqs", data.animalReqs.data);
         if (data.savedFormulas?.data) { setSavedFormulasState(data.savedFormulas.data); db.set("savedFormulas", data.savedFormulas.data); }
         if (data.products?.data)         { setProductsState(data.products.data); db.set("products", data.products.data); }
