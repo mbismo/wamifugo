@@ -2224,7 +2224,15 @@ function FormulatorPage(props) {
         showT('No ingredients in stock. Add stock in Inventory first.', 'error');
         return;
       }
+      // [DIAGNOSTIC] Log exactly what's being passed to solver — remove after debugging
+      console.log('=== SOLVER INPUT (auto) ===');
+      console.log('species:', species, 'stage:', stage);
+      console.log('reqs:', JSON.stringify(req));
+      console.log('ingrs:', JSON.stringify(ingrs.map(function(i) {
+        return { id: i.id, name: i.name, price: i.price, cp: i.cp, me: i.me, fat: i.fat, fibre: i.fibre, ca: i.ca, p: i.p, lys: i.lys, met: i.met, minIncl: i.minIncl, maxIncl: i.maxIncl };
+      }), null, 2));
       const result = solveBestEffort(ingrs, req);
+      console.log('=== SOLVER RESULT ===', result);
       // FEASIBLE: nutrition fully met
       if (result && result.formula) {
         const n = calcNutrients(result.formula, ingrs);
