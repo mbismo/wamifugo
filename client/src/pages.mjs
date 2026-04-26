@@ -408,17 +408,20 @@ function StatCard(props) {
 }
 
 function Modal(props) {
+  // Inline styles preserved as fallback; the wm-modal-overlay/wm-modal classes
+  // (defined in index.html) override these on small screens to give a proper
+  // bottom-sheet style modal that respects the phone viewport.
   const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 };
-  const modal = { background: 'white', borderRadius: 16, width: '100%', maxWidth: props.width || 500, maxHeight: '90vh', overflowY: 'auto' };
-  const header = { padding: '14px 18px', borderBottom: '1px solid ' + C.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
-  const body = { padding: 18 };
-  return h('div', { style: overlay, onClick: props.onClose },
-    h('div', { style: modal, onClick: function(e) { e.stopPropagation(); } },
+  const modal = { background: 'white', borderRadius: 16, width: '100%', maxWidth: props.width || 500, maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' };
+  const header = { padding: '14px 18px', borderBottom: '1px solid ' + C.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 };
+  const body = { padding: 18, overflowY: 'auto', flex: 1 };
+  return h('div', { className: 'wm-modal-overlay', style: overlay, onClick: props.onClose },
+    h('div', { className: 'wm-modal', style: modal, onClick: function(e) { e.stopPropagation(); } },
       h('div', { style: header },
         h('div', { style: { fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 700, color: C.earth } }, props.title),
-        h('button', { onClick: props.onClose, style: { background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.muted } }, 'x')
+        h('button', { onClick: props.onClose, style: { background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.muted, padding: '4px 10px', minHeight: 38 } }, 'x')
       ),
-      h('div', { style: body }, props.children)
+      h('div', { className: 'wm-modal-body', style: body }, props.children)
     )
   );
 }
@@ -605,7 +608,10 @@ function Tbl(props) {
 
   return h('div', null,
     searchBar,
-    h('div', { style: { overflowX: 'auto', overflowY: 'auto', maxHeight: maxHeight } },
+    h('div', {
+      className: 'wm-table-wrap',
+      style: { overflowY: 'auto', maxHeight: maxHeight }
+    },
       h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 } },
         h('thead', null, h('tr', null, ths)),
         h('tbody', null, trs)
@@ -832,6 +838,7 @@ function LoginPage(props) {
   );
 
   const card = h('div', {
+    className: 'wm-card-padded',
     style: { background: 'white', borderRadius: 20, padding: '40px 36px', width: '100%', maxWidth: 400, boxShadow: '0 32px 80px rgba(0,0,0,0.4)' }
   },
     header,
@@ -1704,7 +1711,7 @@ function IngredientsPage() {
       style: { background: '#f0f9f4', border: '1px solid ' + C.leaf, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: C.soil, marginBottom: 12 }
     }, 'Prices are managed in Inventory > Price button'),
     h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 8 } }, 'Nutritional Composition'),
-    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 } },
+    h('div', { className: 'wm-grid-4', style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 } },
       h(Inp, { label: 'CP %', value: form.cp, onChange: function(v) { setForm(Object.assign({}, form, { cp: v })); }, type: 'number' }),
       h(Inp, { label: 'ME kcal/kg', value: form.me, onChange: function(v) { setForm(Object.assign({}, form, { me: v })); }, type: 'number' }),
       h(Inp, { label: 'Fat %', value: form.fat, onChange: function(v) { setForm(Object.assign({}, form, { fat: v })); }, type: 'number' }),
@@ -1715,7 +1722,7 @@ function IngredientsPage() {
       h(Inp, { label: 'Met %', value: form.met, onChange: function(v) { setForm(Object.assign({}, form, { met: v })); }, type: 'number' })
     ),
     h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 16 } }, 'Inclusion Limits'),
-    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+    h('div', { className: 'wm-grid-2', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
       h(Inp, {
         label: 'Min Inclusion % (default 0)',
         value: form.minIncl,
@@ -3639,7 +3646,7 @@ function SalesPage() {
   return h('div', { style: { padding: '0 26px 26px' } },
     toast ? h(Toast, { msg: toast.msg, type: toast.type }) : null,
     h(PageHdr, { title: '\u{1F4B0} Sales Records', subtitle: 'All confirmed feed sales' }),
-    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 18 } },
+    h('div', { className: 'wm-grid-4', style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 18 } },
       h(StatCard, { label: 'Total Sales', value: sales.length, icon: 'S', color: C.earth }),
       h(StatCard, { label: 'Total Revenue', value: fmtKES(rev), icon: '$', color: C.grass }),
       h(StatCard, { label: 'Total Cost', value: fmtKES(cost), icon: 'C', color: C.warning }),
@@ -4310,12 +4317,12 @@ function NutritionPage() {
     onClose: function() { setShowForm(false); setEditReq(null); },
     width: 640
   },
-    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+    h('div', { className: 'wm-grid-2', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
       h(Inp, { label: 'Category', value: form.category, onChange: handleSpeciesChange, placeholder: 'e.g. Poultry (Broiler)' }),
       h(Inp, { label: 'Stage', value: form.stage, onChange: function(v) { setForm(Object.assign({}, form, { stage: v })); }, placeholder: 'e.g. Starter (0-21 days)' })
     ),
     h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 16 } }, 'Nutrient Targets (min-max)'),
-    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 } },
+    h('div', { className: 'wm-grid-4', style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 } },
       rangeField('cp', 'CP % (min-max)'),
       rangeField('me', 'ME kcal/kg'),
       rangeField('fat', 'Fat %'),
@@ -4622,7 +4629,7 @@ function UsersPage(props) {
     onClose: function() { setShowAdd(false); },
     width: 480
   },
-    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+    h('div', { className: 'wm-grid-2', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
       h(Inp, { label: 'Full Name *', value: form.name, onChange: function(v) { setForm(Object.assign({}, form, { name: v })); } }),
       h(Inp, { label: 'Username *', value: form.username, onChange: function(v) { setForm(Object.assign({}, form, { username: v.toLowerCase().replace(/[ ]/g, '') })); } }),
       h(Inp, { label: 'Email', value: form.email, onChange: function(v) { setForm(Object.assign({}, form, { email: v })); }, type: 'email' }),
@@ -4652,7 +4659,7 @@ function UsersPage(props) {
     onClose: function() { setEditUser(null); },
     width: 480
   },
-    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+    h('div', { className: 'wm-grid-2', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
       h(Inp, { label: 'Full Name', value: editForm.name, onChange: function(v) { setEditForm(Object.assign({}, editForm, { name: v })); } }),
       h(Inp, { label: 'Username', value: editForm.username, onChange: function(v) { setEditForm(Object.assign({}, editForm, { username: v.toLowerCase().replace(/[ ]/g, '') })); } })
     ),
@@ -4744,7 +4751,7 @@ function UsersPage(props) {
     addModal,
     editModal,
     pwdModal,
-    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 18 } },
+    h('div', { className: 'wm-grid-3', style: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 18 } },
       h(StatCard, { label: 'Total Users', value: users.length, color: C.earth, icon: 'U' }),
       h(StatCard, { label: 'Active', value: users.filter(function(u) { return u.active !== false; }).length, color: C.grass, icon: 'A' }),
       h(StatCard, { label: 'Admins', value: users.filter(function(u) { return u.role === 'admin'; }).length, color: C.savanna, icon: 'M' })
@@ -6287,7 +6294,7 @@ function ProductsPage() {
       onChange: function(v) { setProdForm(Object.assign({}, prodForm, { name: v })); },
       placeholder: 'e.g. Cydectin Pour-On 250ml'
     }),
-    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+    h('div', { className: 'wm-grid-2', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
       h(Sel, {
         label: 'Category',
         value: prodForm.category,
@@ -6348,16 +6355,16 @@ function ProductsPage() {
           })
       )
     }),
-    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+    h('div', { className: 'wm-grid-2', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
       h(Inp, { label: 'Quantity', value: stockForm.qty, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { qty: v })); }, type: 'number', placeholder: 'units bought' }),
       h(Inp, { label: 'Cost per unit (KES)', value: stockForm.costPerUnit, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { costPerUnit: v })); }, type: 'number' })
     ),
-    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+    h('div', { className: 'wm-grid-2', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
       h(Inp, { label: 'Purchase Date', value: stockForm.purchaseDate, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { purchaseDate: v })); }, type: 'date' }),
       h(Inp, { label: 'Supplier (optional)', value: stockForm.supplier, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { supplier: v })); } })
     ),
     h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 8 } }, 'Lot tracking (recommended for vet products)'),
-    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+    h('div', { className: 'wm-grid-2', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
       h(Inp, { label: 'Expiry Date', value: stockForm.expiryDate, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { expiryDate: v })); }, type: 'date' }),
       h(Inp, { label: 'Manufacturer Batch #', value: stockForm.manufacturerBatch, onChange: function(v) { setStockForm(Object.assign({}, stockForm, { manufacturerBatch: v })); }, placeholder: 'e.g. LOT-A4521' })
     ),
@@ -6793,10 +6800,36 @@ export default function Pages(props) {
 
   const pageFn = pageMap[props.page] || pageMap.dashboard;
 
+  // Mobile top bar with hamburger menu — only visible on small screens (CSS-driven)
+  const mobileBar = h('div', { className: 'wm-mobile-bar' },
+    h('button', {
+      onClick: function() { props.setSidebarOpen(true); },
+      style: {
+        background: 'transparent', border: 'none',
+        color: 'white', fontSize: 22, cursor: 'pointer',
+        padding: '4px 8px', display: 'flex', alignItems: 'center'
+      },
+      'aria-label': 'Open menu'
+    }, '\u2630'),
+    h('div', {
+      style: {
+        color: 'white', fontWeight: 700, fontFamily: "'Playfair Display',serif",
+        fontSize: 16, letterSpacing: 0.3
+      }
+    }, 'Wa-Mifugo')
+  );
+
+  // Overlay that closes the sidebar when tapped — visible on mobile when sidebar is open
+  const overlay = props.sidebarOpen
+    ? h('div', { className: 'wm-overlay', onClick: function() { props.setSidebarOpen(false); } })
+    : null;
+
   return h('div', {
     className: 'wm-layout',
     style: { display: 'flex', minHeight: '100vh', background: C.cream }
   },
+    mobileBar,
+    overlay,
     h(Sidebar, {
       page: props.page,
       setPage: props.setPage,
@@ -6806,8 +6839,8 @@ export default function Pages(props) {
       onClose: function() { props.setSidebarOpen(false); }
     }),
     h('div', {
-      className: 'wm-main',
-      style: { flex: 1, overflow: 'auto', paddingTop: 20 }
+      className: 'wm-main wm-page',
+      style: { flex: 1, overflow: 'auto', padding: '20px 24px', minWidth: 0 }
     }, pageFn())
   );
 }
