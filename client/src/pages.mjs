@@ -2075,6 +2075,13 @@ function FormulatorPage(props) {
   // == pct) for the current solve only. Cleared when species/stage changes.
   const [lockedPcts, setLockedPcts] = useState({});
 
+  // Stock-aware mode toggle: when ON, solver caps each ingredient's maxIncl
+  // by available stock for the current batch size (won't propose mixes you
+  // can't physically mill). When OFF (default), solver finds the cost-optimal
+  // mix regardless of stock, and the UI flags any ingredients where the
+  // recommended kg exceeds inventory.
+  const [stockLimited, setStockLimited] = useState(false);
+
   useEffect(function() {
     const available = ingredients.filter(function(i) {
       const inv = inventory.find(function(x) { return x.id === i.id; });
@@ -2125,17 +2132,20 @@ function FormulatorPage(props) {
       }
       const base = Object.assign({}, i, { price: getSellPriceForIng(i) });
 
-      // Stock-aware max inclusion: a 100kg batch can use at most
-      // `availableQty / batchKg * 100` percent of an ingredient before running
-      // out of stock. This stops the solver proposing mixes the user can't
-      // actually mill from current inventory.
+      // Stock-aware max inclusion (only when stockLimited mode is enabled).
+      // When OFF (default), the solver returns the cost-optimal recipe
+      // regardless of current stock; the UI flags any shortages afterwards.
+      // When ON, ingredients are capped by `availableQty / batchKg * 100`
+      // so the solver never proposes a mix you can't physically mill.
       const inv = inventory.find(function(x) { return x.id === i.id; });
       const availableKg = inv ? (typeof availableQty === 'function' ? availableQty(inv) : (inv.qty || 0)) : 0;
       let stockMax = 100;
-      if (availableKg > 0 && batchKg > 0) {
-        stockMax = Math.min(100, (availableKg / batchKg) * 100);
-      } else if (availableKg <= 0) {
-        stockMax = 0;
+      if (stockLimited) {
+        if (availableKg > 0 && batchKg > 0) {
+          stockMax = Math.min(100, (availableKg / batchKg) * 100);
+        } else if (availableKg <= 0) {
+          stockMax = 0;
+        }
       }
 
       // Mandatory inclusion (from premix rules) — bake into bounds
@@ -2253,7 +2263,7 @@ function FormulatorPage(props) {
       setLoading(false);
     }, 500);
     return function() { clearTimeout(timer); };
-  }, [species, stage, selIngrs.size, lockedPcts, batchKg]);
+  }, [species, stage, selIngrs.size, lockedPcts, batchKg, stockLimited]);
 
   function doFormulate() {
     if (!species || !stage) { showT('Select species and stage.', 'error'); return; }
@@ -3196,6 +3206,41 @@ function FormulatorPage(props) {
         }, 'Batch total: KES ' + (costPKg * batchKg).toFixed(0))
       )
     ),
+    // Stock-shortage banner — only when stockLimited is OFF and at least one
+    // ingredient's needed kg exceeds what's in inventory.
+    (function() {
+      if (stockLimited) return null;
+      const shortages = formulaRows.filter(function(r) {
+        const inv = inventory.find(function(x) { return x.id === r.id; });
+        const have = inv ? (typeof availableQty === 'function' ? availableQty(inv) : (inv.qty || 0)) : 0;
+        return have < r.qty - 0.1;
+      });
+      if (shortages.length === 0) return null;
+      return h('div', {
+        style: {
+          padding: '10px 16px', background: '#fff7e6',
+          borderTop: '1px solid #f59e0b', borderBottom: '1px solid #f59e0b',
+          fontSize: 12, color: '#92400e', display: 'flex',
+          alignItems: 'center', justifyContent: 'space-between', gap: 12
+        }
+      },
+        h('div', null,
+          h('strong', null, '\u{26A0} Stock shortage on ' + shortages.length + ' ingredient' +
+            (shortages.length > 1 ? 's' : '')),
+          ' \u{2022} this is the cheapest mix; you\'ll need to purchase before milling. ',
+          'Toggle "Limit to current stock" above to solve only with what you have.'
+        ),
+        h('button', {
+          type: 'button',
+          onClick: function() { setStockLimited(true); },
+          style: {
+            padding: '4px 10px', fontSize: 11, fontWeight: 700,
+            background: '#92400e', color: 'white',
+            border: 'none', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap'
+          }
+        }, 'Use stock-limited mode')
+      );
+    })(),
     h(Tbl, {
       cols: [
         { key: 'name', label: 'Ingredient' },
@@ -3441,7 +3486,8 @@ function FormulatorPage(props) {
         padding: '12px 16px',
         background: 'white',
         border: '1px solid ' + C.border,
-        borderRadius: 12
+        borderRadius: 12,
+        flexWrap: 'wrap'
       }
     },
       h(Btn, {
@@ -3453,7 +3499,31 @@ function FormulatorPage(props) {
       qBadge,
       (!species || !stage) ? h('span', {
         style: { fontSize: 13, color: C.muted, fontStyle: 'italic' }
-      }, 'Select species and stage to begin') : null
+      }, 'Select species and stage to begin') : null,
+      // Stock-aware mode toggle
+      h('label', {
+        style: {
+          display: 'flex', alignItems: 'center', gap: 6,
+          marginLeft: 'auto', cursor: 'pointer',
+          padding: '6px 10px', borderRadius: 8,
+          background: stockLimited ? '#ecfeff' : '#f8f6f0',
+          border: '1px solid ' + (stockLimited ? '#67e8f9' : C.border),
+          fontSize: 12, color: C.earth, userSelect: 'none'
+        },
+        title: stockLimited
+          ? 'Solver caps each ingredient at its current stock level. Recipe will fit current inventory.'
+          : 'Solver finds the cost-optimal recipe regardless of stock. Stock shortages flagged after solve.'
+      },
+        h('input', {
+          type: 'checkbox',
+          checked: stockLimited,
+          onChange: function(e) { setStockLimited(e.target.checked); },
+          style: { width: 14, height: 14, cursor: 'pointer' }
+        }),
+        h('span', { style: { fontWeight: 600 } }, '\u{1F4E6} Limit to current stock'),
+        h('span', { style: { fontSize: 10, color: C.muted, fontFamily: "'DM Mono',monospace" } },
+          stockLimited ? 'ON' : 'OFF')
+      )
     ),
     // Main results area
     anfDisplay,
