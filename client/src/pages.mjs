@@ -5385,6 +5385,7 @@ function DirectSalePage() {
   const [walkInName, setWalkInName] = useState('');
   const [items, setItems] = useState([]); // [{itemId, qty, totalPrice, lotOrder?}]
   const [pickerId, setPickerId] = useState('');
+  const [pickerSearch, setPickerSearch] = useState('');
   const [lotPickerIdx, setLotPickerIdx] = useState(null); // index of line whose lots we're picking
   const [toast, setToast] = useState(null);
 
@@ -5421,24 +5422,26 @@ function DirectSalePage() {
     return r.totalCost;
   }
 
-  function addLine() {
-    if (!pickerId) return;
-    if (items.find(function(it) { return it.itemId === pickerId; })) {
+  function addLine(forceId) {
+    const id = forceId || pickerId;
+    if (!id) return;
+    if (items.find(function(it) { return it.itemId === id; })) {
       showT('Already added. Edit quantity or remove the existing line.', 'error');
       return;
     }
-    const inv = findInvRow(pickerId);
+    const inv = findInvRow(id);
     if (!inv || inv.row.qty <= 0) {
       showT('No stock for this item.', 'error');
       return;
     }
     const defaultQty = 1;
     setItems(items.concat([{
-      itemId: pickerId,
+      itemId: id,
       qty: defaultQty,
-      totalPrice: getDefaultPrice(pickerId, defaultQty)
+      totalPrice: getDefaultPrice(id, defaultQty)
     }]));
     setPickerId('');
+    setPickerSearch('');
   }
 
   function updateQty(idx, val) {
@@ -5575,30 +5578,6 @@ function DirectSalePage() {
   const allItems = [].concat(
     ingredients.map(function(i) { return { kind: 'ingredient', def: i }; }),
     products.map(function(p) { return { kind: 'product', def: p }; })
-  );
-  const pickerOptions = [{ value: '', label: 'Choose ingredient or product to add...' }].concat(
-    allItems
-      .slice()
-      .sort(function(a, b) {
-        const sA = getStock(a.def.id), sB = getStock(b.def.id);
-        if (sA > 0 && sB <= 0) return -1;
-        if (sB > 0 && sA <= 0) return 1;
-        return a.def.name.localeCompare(b.def.name);
-      })
-      .map(function(item) {
-        const def = item.def;
-        const stock = getStock(def.id);
-        const sellP = getDefaultPrice(def.id, 1);
-        const unit = item.kind === 'product' ? (def.unit || 'unit') : 'kg';
-        const icon = item.kind === 'product' ? '\u{1F9F4} ' : '\u{1F33F} ';
-        return {
-          value: def.id,
-          label: icon + def.name + (stock > 0
-            ? ' \u{2022} ' + stock.toFixed(item.kind === 'product' ? 0 : 1) + ' ' + unit + ' \u{2022} KES ' + sellP + '/' + unit
-            : ' \u{2022} OUT OF STOCK'),
-          disabled: stock <= 0
-        };
-      })
   );
 
   // Lot picker modal — pick which lots to consume for a given line, in priority order
@@ -5779,23 +5758,128 @@ function DirectSalePage() {
     h(Card, { style: { marginBottom: 14 } },
       h(CardTitle, null, '\u{1F4E6} Items'),
       h('div', { style: { padding: '14px 18px' } },
-        // Picker row
-        h('div', { style: { display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 14 } },
-          h('div', { style: { flex: 1 } },
-            h(Sel, {
-              label: 'Add ingredient',
-              value: pickerId,
-              onChange: setPickerId,
-              options: pickerOptions
-            })
-          ),
-          h(Btn, {
-            onClick: addLine,
-            variant: 'success',
-            disabled: !pickerId,
-            style: { marginBottom: 12 }
-          }, '+ Add')
-        ),
+        // Type-to-search picker — works much better than a long dropdown when
+        // there are many ingredients + products to choose from.
+        (function() {
+          const q = pickerSearch.trim().toLowerCase();
+          const allOptions = allItems
+            .slice()
+            .sort(function(a, b) {
+              const sA = getStock(a.def.id), sB = getStock(b.def.id);
+              if (sA > 0 && sB <= 0) return -1;
+              if (sB > 0 && sA <= 0) return 1;
+              return a.def.name.localeCompare(b.def.name);
+            });
+          // Filter: case-insensitive substring on name (and category for niceness)
+          const matches = q
+            ? allOptions.filter(function(item) {
+                const name = (item.def.name || '').toLowerCase();
+                const cat = (item.def.category || '').toLowerCase();
+                return name.indexOf(q) !== -1 || cat.indexOf(q) !== -1;
+              })
+            : allOptions;
+          // Show top N to keep the list manageable
+          const VISIBLE_LIMIT = q ? 12 : 8;
+          const visible = matches.slice(0, VISIBLE_LIMIT);
+          const hidden = matches.length - visible.length;
+          const alreadyAdded = new Set(items.map(function(it) { return it.itemId; }));
+
+          return h('div', { style: { marginBottom: 14 } },
+            // Search input
+            h('div', { style: { position: 'relative', marginBottom: 8 } },
+              h(Inp, {
+                label: 'Search ingredients & products',
+                value: pickerSearch,
+                onChange: setPickerSearch,
+                placeholder: 'Type to filter — e.g. maize, soybean, broiler starter...'
+              }),
+              pickerSearch ? h('button', {
+                type: 'button',
+                onClick: function() { setPickerSearch(''); },
+                style: {
+                  position: 'absolute', right: 8, top: 28,
+                  background: 'transparent', border: 'none',
+                  fontSize: 16, color: C.muted, cursor: 'pointer',
+                  padding: '6px 8px', minHeight: 0
+                },
+                'aria-label': 'Clear search'
+              }, '\u00D7') : null
+            ),
+            // Result list — clickable rows, instantly add when tapped
+            h('div', {
+              style: {
+                border: '1px solid ' + C.border,
+                borderRadius: 8,
+                background: 'white',
+                maxHeight: 280,
+                overflowY: 'auto'
+              }
+            },
+              visible.length === 0
+                ? h('div', { style: { padding: 20, textAlign: 'center', color: C.muted, fontSize: 12 } },
+                    q ? 'No matches for \u201C' + pickerSearch + '\u201D' : 'No items available')
+                : visible.map(function(item, idx) {
+                    const def = item.def;
+                    const stock = getStock(def.id);
+                    const sellP = getDefaultPrice(def.id, 1);
+                    const unit = item.kind === 'product' ? (def.unit || 'unit') : 'kg';
+                    const icon = item.kind === 'product' ? '\u{1F9F4}' : '\u{1F33F}';
+                    const outOfStock = stock <= 0;
+                    const added = alreadyAdded.has(def.id);
+                    const disabled = outOfStock || added;
+                    return h('div', {
+                      key: def.id,
+                      onClick: disabled ? null : function() { addLine(def.id); },
+                      style: {
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '10px 12px',
+                        borderBottom: idx < visible.length - 1 ? '1px solid ' + C.border : 'none',
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.45 : 1,
+                        transition: 'background 0.12s',
+                        minHeight: 44
+                      },
+                      onMouseEnter: function(e) { if (!disabled) e.currentTarget.style.background = C.cream; },
+                      onMouseLeave: function(e) { e.currentTarget.style.background = 'white'; }
+                    },
+                      h('span', { style: { fontSize: 18, flexShrink: 0 } }, icon),
+                      h('div', { style: { flex: 1, minWidth: 0 } },
+                        h('div', {
+                          style: {
+                            fontSize: 13, fontWeight: 600, color: C.ink,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                          }
+                        }, def.name),
+                        h('div', {
+                          style: { fontSize: 11, color: C.muted, fontFamily: "'DM Mono',monospace", marginTop: 2 }
+                        },
+                          outOfStock
+                            ? 'OUT OF STOCK'
+                            : (added
+                                ? 'Already added'
+                                : stock.toFixed(item.kind === 'product' ? 0 : 1) + ' ' + unit + ' \u2022 KES ' + sellP + '/' + unit)
+                        )
+                      ),
+                      h('div', {
+                        style: {
+                          fontSize: 18, fontWeight: 700,
+                          color: disabled ? C.muted : C.grass,
+                          flexShrink: 0, padding: '0 4px'
+                        }
+                      }, added ? '\u2713' : (disabled ? '' : '+'))
+                    );
+                  }),
+              hidden > 0 ? h('div', {
+                style: {
+                  padding: '8px 12px', fontSize: 11, color: C.muted, fontStyle: 'italic',
+                  borderTop: '1px solid ' + C.border, background: C.cream
+                }
+              }, '\u2026 and ' + hidden + ' more. Refine your search to see them.') : null
+            )
+          );
+        })(),
         // Items table
         items.length === 0 ? h('div', {
           style: { padding: 30, textAlign: 'center', color: C.muted, fontSize: 13, background: C.cream, borderRadius: 10 }
