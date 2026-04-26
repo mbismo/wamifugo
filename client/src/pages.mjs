@@ -1411,7 +1411,7 @@ function IngredientsPage() {
   const blank = {
     name: '', category: 'energy',
     cp: '', me: '', fat: '', fibre: '', ca: '', p: '', lys: '', met: '',
-    maxIncl: '', nutritiveNote: '', antiNote: '',
+    minIncl: '', maxIncl: '', nutritiveNote: '', antiNote: '',
     restrictedTo: [],   // array of {category, stage}
     mandatoryAt: []     // array of {category, stage, minPct, maxPct}
   };
@@ -1467,6 +1467,11 @@ function IngredientsPage() {
           p: parseFloat(get(['p', 'phosphorus', 'ppercent'])) || 0,
           lys: parseFloat(get(['lys', 'lysine'])) || 0,
           met: parseFloat(get(['met', 'methionine'])) || 0,
+          minIncl: (function() {
+            const v = get(['minincl', 'mininclusion', 'mininclusionpercent', 'min', 'minpercent', 'floor']);
+            const n = parseFloat(v);
+            return isNaN(n) ? 0 : Math.min(100, Math.max(0, n));
+          })(),
           maxIncl: (function() {
             const v = get(['maxincl', 'maxinclusion', 'maxincusionpercent', 'max', 'maxpercent', 'cap']);
             const n = parseFloat(v);
@@ -1536,34 +1541,44 @@ function IngredientsPage() {
   function downloadTemplate() {
     const headers = [
       'Name', 'Category', 'CP %', 'ME kcal/kg', 'Fat %', 'Fibre %', 'Ca %', 'P %', 'Lys %', 'Met %',
-      'Max Inclusion %', 'Nutritive Note', 'Anti Note',
+      'Min Inclusion %', 'Max Inclusion %', 'Nutritive Note', 'Anti Note',
       'Restricted To', 'Mandatory At'
     ];
     const sample = [
-      ['Maize Grain', 'energy', 8.5, 3350, 3.8, 2.3, 0.02, 0.28, 0.24, 0.17, 70,
+      ['Maize Grain', 'energy', 8.5, 3350, 3.8, 2.3, 0.02, 0.28, 0.24, 0.17, 0, 70,
         'High-energy staple. Excellent palatability. Yellow varieties supply xanthophyll for egg yolk colour.',
         'Susceptible to aflatoxin if poorly stored. Reject mouldy or musty grain. Limit to 70% in poultry mash.',
         '', ''],
-      ['Soybean Meal (44%)', 'protein', 44, 2230, 1.5, 6.5, 0.33, 0.65, 2.78, 0.64, 35,
+      ['Soybean Meal (44%)', 'protein', 44, 2230, 1.5, 6.5, 0.33, 0.65, 2.78, 0.64, 0, 35,
         'Highest-quality plant protein. Excellent amino acid profile, especially lysine. Standard pairing with maize.',
         'Raw soy contains trypsin inhibitors and must be heat-treated (toasted). Limit to 35% to avoid excess Lys/Met imbalance.',
         '', ''],
-      ['Broiler Premix', 'mineral', 0, 0, 0, 0, 12, 8, 0, 0, 5,
+      ['Broiler Premix', 'mineral', 0, 0, 0, 0, 12, 8, 0, 0, 0.5, 0.5,
         'Vitamin/mineral premix for broilers. Supplies all micronutrients above what raw ingredients provide.',
         'Use only in broiler rations. Do not exceed manufacturer rate.',
         'Poultry (Broiler)|Broiler Starter (0-21 days); Poultry (Broiler)|Broiler Finisher (22+ days)',
-        'Poultry (Broiler)|Broiler Starter (0-21 days)|0.5|0.5; Poultry (Broiler)|Broiler Finisher (22+ days)|0.5|0.5'],
-      ['Layer Premix', 'mineral', 0, 0, 0, 0, 18, 6, 0, 0, 5,
+        ''],
+      ['Layer Premix', 'mineral', 0, 0, 0, 0, 18, 6, 0, 0, 0.5, 0.5,
         'Vitamin/mineral premix for laying hens with calcium and phosphorus boost for shell quality.',
         'Use only in layer rations.',
         'Poultry (Layer)|Pre-Layer Mash (17-18 weeks); Poultry (Layer)|Layers Mash (18+ weeks)',
-        'Poultry (Layer)|Pre-Layer Mash (17-18 weeks)|0.5|0.5; Poultry (Layer)|Layers Mash (18+ weeks)|0.5|0.5']
+        '']
     ];
     exportToExcel([headers].concat(sample), 'ingredients_import_template.xlsx', 'Ingredients');
   }
 
   function saveIng() {
     if (!form.name) return;
+    // Sanitise min/max — empty becomes 0/100; clamp 0..100; ensure min ≤ max
+    const minRaw = form.minIncl;
+    const maxRaw = form.maxIncl;
+    const minIncl = (minRaw === '' || minRaw == null)
+      ? 0
+      : Math.min(100, Math.max(0, parseFloat(minRaw) || 0));
+    let maxIncl = (maxRaw === '' || maxRaw == null)
+      ? 100
+      : Math.min(100, Math.max(0, parseFloat(maxRaw) || 0));
+    if (maxIncl < minIncl) maxIncl = minIncl;
     const newIng = Object.assign({}, form, {
       id: editing ? editing.id : ('ing_' + uid()),
       cp: parseFloat(form.cp) || 0,
@@ -1574,7 +1589,8 @@ function IngredientsPage() {
       p: parseFloat(form.p) || 0,
       lys: parseFloat(form.lys) || 0,
       met: parseFloat(form.met) || 0,
-      maxIncl: form.maxIncl === '' || form.maxIncl == null ? 100 : Math.min(100, Math.max(0, parseFloat(form.maxIncl) || 0)),
+      minIncl: minIncl,
+      maxIncl: maxIncl,
       nutritiveNote: (form.nutritiveNote || '').trim(),
       antiNote: (form.antiNote || '').trim(),
       restrictedTo: Array.isArray(form.restrictedTo) ? form.restrictedTo.slice() : [],
@@ -1623,10 +1639,18 @@ function IngredientsPage() {
     { key: 'p', label: 'P %' },
     { key: 'lys', label: 'Lys %' },
     { key: 'met', label: 'Met %' },
-    { key: 'maxIncl', label: 'Max %', render: function(r) {
-      const v = r.maxIncl != null ? r.maxIncl : 100;
-      return h('span', { style: { fontFamily: "'DM Mono',monospace", color: v < 100 ? C.warning : C.muted } },
-        v < 100 ? v + '%' : '100%');
+    { key: 'inclusion', label: 'Incl %', sortable: false, render: function(r) {
+      const lo = parseFloat(r.minIncl) || 0;
+      const hi = r.maxIncl != null ? parseFloat(r.maxIncl) : 100;
+      const isPinned = lo > 0 && Math.abs(lo - hi) < 0.0001;
+      const hasMin = lo > 0;
+      const isCapped = hi < 100;
+      // Color logic: pinned (forced exact) → orange ; min>0 (forced floor) → orange ; capped only → muted warning
+      const color = isPinned ? C.warning : (hasMin ? C.warning : (isCapped ? C.warning : C.muted));
+      const text = isPinned
+        ? '= ' + lo + '%'
+        : (hasMin ? lo + '–' + hi + '%' : (isCapped ? '0–' + hi + '%' : '0–100%'));
+      return h('span', { style: { fontFamily: "'DM Mono',monospace", color: color, fontWeight: hasMin ? 700 : 400 } }, text);
     }},
     { key: 'price', label: 'Sell Price/kg', render: function(r) {
       const sp = getSellPrice(r.id);
@@ -1691,15 +1715,29 @@ function IngredientsPage() {
       h(Inp, { label: 'Met %', value: form.met, onChange: function(v) { setForm(Object.assign({}, form, { met: v })); }, type: 'number' })
     ),
     h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 16 } }, 'Inclusion Limits'),
-    h(Inp, {
-      label: 'Max Inclusion % (default 100)',
-      value: form.maxIncl,
-      onChange: function(v) { setForm(Object.assign({}, form, { maxIncl: v })); },
-      type: 'number',
-      placeholder: 'e.g. 25 for cottonseed cake; 100 if no cap'
-    }),
-    h('div', { style: { fontSize: 11, color: C.muted, marginTop: -8, marginBottom: 12, fontStyle: 'italic' } },
-      'The solver will not exceed this percentage of the total mix for this ingredient.'),
+    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+      h(Inp, {
+        label: 'Min Inclusion % (default 0)',
+        value: form.minIncl,
+        onChange: function(v) { setForm(Object.assign({}, form, { minIncl: v })); },
+        type: 'number',
+        placeholder: '0 = optional; e.g. 0.5 to force premix at 0.5%'
+      }),
+      h(Inp, {
+        label: 'Max Inclusion % (default 100)',
+        value: form.maxIncl,
+        onChange: function(v) { setForm(Object.assign({}, form, { maxIncl: v })); },
+        type: 'number',
+        placeholder: 'e.g. 25 for cottonseed cake; 100 if no cap'
+      })
+    ),
+    h('div', { style: { fontSize: 11, color: C.muted, marginTop: -4, marginBottom: 12, fontStyle: 'italic', lineHeight: 1.5 } },
+      h('strong', null, 'Min: '), 'force the solver to include AT LEAST this %. Use sparingly — usually 0. Setting min > 0 makes the ingredient appear in EVERY formula by force.',
+      h('br'),
+      h('strong', null, 'Max: '), 'cap the solver at this %. Use to limit ingredients with anti-nutritional factors (e.g. cottonseed cake max 8% in poultry).',
+      h('br'),
+      h('strong', null, 'Pin to fixed %: '), 'set min = max (e.g. both 0.5 for premix locked at 0.5%).'
+    ),
     h('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, marginBottom: 6, marginTop: 16 } }, 'Notes'),
     h(Inp, {
       label: '\u{1F33F} Nutritive Notes',
@@ -4874,14 +4912,15 @@ function ResourcesPage() {
   }
 
   const exports = [
-    { title: 'Ingredients Catalog', desc: 'Master list with full nutrient profile, max inclusion, and notes',
+    { title: 'Ingredients Catalog', desc: 'Master list with full nutrient profile, inclusion limits, and notes',
       onCSV: function() {
         const headers = ['ID', 'Name', 'Category',
           'CP %', 'ME kcal/kg', 'Fat %', 'Fibre %', 'Ca %', 'P %', 'Lys %', 'Met %',
-          'Max Inclusion %', 'Nutritive Note', 'Anti-Nutritive Note'];
+          'Min Inclusion %', 'Max Inclusion %', 'Nutritive Note', 'Anti-Nutritive Note'];
         const rows = [headers].concat(ingredients.map(function(i) {
           return [i.id, i.name, i.category || '',
             i.cp || 0, i.me || 0, i.fat || 0, i.fibre || 0, i.ca || 0, i.p || 0, i.lys || 0, i.met || 0,
+            i.minIncl != null ? i.minIncl : 0,
             i.maxIncl != null ? i.maxIncl : 100,
             i.nutritiveNote || '', i.antiNote || ''];
         }));
@@ -4891,12 +4930,15 @@ function ResourcesPage() {
       onPrint: function() {
         printReport('Ingredients Catalog',
           ingredients.map(function(i) {
+            const lo = i.minIncl != null ? i.minIncl : 0;
+            const hi = i.maxIncl != null ? i.maxIncl : 100;
+            const inclusion = lo === hi && lo > 0 ? '= ' + lo + '%' : (lo > 0 ? lo + '–' + hi + '%' : hi + '% max');
             return [i.name, i.category || '',
               i.cp || 0, i.me || 0, i.fat || 0, i.fibre || 0,
               i.ca || 0, i.p || 0, i.lys || 0, i.met || 0,
-              (i.maxIncl != null ? i.maxIncl : 100) + '%'];
+              inclusion];
           }),
-          ['Ingredient', 'Category', 'CP%', 'ME', 'Fat%', 'Fibre%', 'Ca%', 'P%', 'Lys%', 'Met%', 'Max %']);
+          ['Ingredient', 'Category', 'CP%', 'ME', 'Fat%', 'Fibre%', 'Ca%', 'P%', 'Lys%', 'Met%', 'Inclusion']);
       }
     },
     { title: 'Ingredient Inventory', desc: 'Current ingredient stock levels, prices, and value',
