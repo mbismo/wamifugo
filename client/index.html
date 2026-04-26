@@ -24,8 +24,10 @@
     }
     input, select, textarea, button { font-family: inherit; }
     /* Prevent iOS auto-zoom on form focus by ensuring 16px+ input font-size on mobile */
+    @media (max-width: 768px) {
+      input, select, textarea { font-size: 16px !important; }
+    }
     input, select, textarea {
-      font-size: 16px;
       max-width: 100%;
     }
     img, video, canvas, svg { max-width: 100%; height: auto; }
@@ -33,11 +35,19 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ─── SIDEBAR / MOBILE NAV ────────────────────────────────────────── */
+    .wm-main {
+      /* Desktop default — generous side padding */
+      padding: 20px 24px;
+    }
     @media (max-width: 768px) {
       .wm-sidebar { position: fixed !important; left: -240px; top: 0; height: 100vh; z-index: 1000; transition: left 0.25s ease; box-shadow: 4px 0 24px rgba(0,0,0,0.4); }
       .wm-sidebar.open { left: 0 !important; }
       .wm-overlay { display: block !important; }
-      .wm-main { margin-left: 0 !important; padding-top: 58px !important; }
+      .wm-main {
+        margin-left: 0 !important;
+        /* Top padding clears the 52px fixed mobile bar with 14px breathing room */
+        padding: 66px 14px 14px !important;
+      }
       .wm-mobile-bar { display: flex !important; }
     }
     @media (min-width: 769px) {
@@ -105,19 +115,23 @@
 
     /* ─── COMPACT PADDING ON MOBILE ───────────────────────────────────── */
     @media (max-width: 640px) {
-      /* Page-level padding tighter so content reaches edges of phone screen */
-      .wm-page { padding: 12px !important; }
       /* Cards: reduce internal padding so they fit comfortably */
       .wm-card-padded { padding: 14px !important; }
+      /* Page header tighter on mobile */
+      .wm-page-hdr { padding: 12px 14px 10px !important; margin-bottom: 12px !important; }
       /* Form rows: stack 2-column grids into 1 column where the class is set */
       .wm-grid-2 { grid-template-columns: 1fr !important; }
       .wm-grid-3 { grid-template-columns: 1fr !important; }
       .wm-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
       /* Headlines slightly smaller so they don't push width */
-      .wm-h1 { font-size: 22px !important; }
+      .wm-h1 { font-size: 22px !important; line-height: 1.15 !important; }
       .wm-h2 { font-size: 18px !important; }
       /* Hero / dashboard tiles: full-width stacks */
       .wm-tiles { grid-template-columns: 1fr !important; }
+      /* Stat card values shrink on phone so long currency strings fit */
+      .wm-stat-value { font-size: 17px !important; }
+      /* Customer-info grid in Direct Sale: tighter padding on mobile so fields breathe */
+      .wm-customer-grid { padding: 12px 14px !important; gap: 10px !important; }
       /* Hide elements marked desktop-only */
       .wm-desktop-only { display: none !important; }
     }

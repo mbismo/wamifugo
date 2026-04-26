@@ -370,39 +370,53 @@ function StatCard(props) {
     boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
     transition: 'all 0.2s',
     position: 'relative',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    minWidth: 0   // allow grid cell to shrink below content's intrinsic size
   };
+  // Decorative icon at low opacity — kept behind the value text.
+  // pointerEvents:none and zIndex:0 so it never overlays the readable content.
   const iconStyle = {
     position: 'absolute',
-    right: 14,
-    top: 14,
-    fontSize: 26,
-    opacity: 0.22
+    right: 12,
+    top: 12,
+    fontSize: 24,
+    opacity: 0.18,
+    pointerEvents: 'none',
+    zIndex: 0
   };
   return h('div', { style: style },
     props.icon ? h('div', { style: iconStyle }, props.icon) : null,
     h('div', {
       style: {
+        position: 'relative',  // sit above the icon
+        zIndex: 1,
         fontSize: 10,
         fontWeight: 700,
         textTransform: 'uppercase',
         letterSpacing: 1.5,
         color: C.muted,
         marginBottom: 6,
-        fontFamily: "'DM Mono',monospace"
+        fontFamily: "'DM Mono',monospace",
+        // Reserve space on the right so label doesn't slide under the icon
+        paddingRight: props.icon ? 22 : 0
       }
     }, props.label),
     h('div', {
+      className: 'wm-stat-value',
       style: {
-        fontSize: 24,
+        position: 'relative',
+        zIndex: 1,
+        fontSize: 22,
         fontFamily: "'Playfair Display',serif",
         fontWeight: 900,
         color: color,
-        lineHeight: 1
+        lineHeight: 1.1,
+        wordBreak: 'break-word',
+        overflowWrap: 'anywhere'
       }
     }, props.value),
     props.sub ? h('div', {
-      style: { fontSize: 11, color: C.muted, marginTop: 4, fontWeight: 600 }
+      style: { fontSize: 11, color: C.muted, marginTop: 4, fontWeight: 600, position: 'relative', zIndex: 1 }
     }, props.sub) : null
   );
 }
@@ -446,16 +460,18 @@ function PageHdr(props) {
     marginBottom: 18,
     background: 'linear-gradient(to bottom, ' + C.cream + ' 0%, transparent 100%)'
   };
-  return h('div', { style: style },
-    h('div', null,
+  return h('div', { className: 'wm-page-hdr', style: style },
+    h('div', { style: { minWidth: 0, flex: '1 1 auto' } },
       h('div', {
+        className: 'wm-h1',
         style: {
           fontFamily: "'Playfair Display',serif",
           fontSize: 28,
           fontWeight: 900,
           color: C.earth,
           lineHeight: 1.1,
-          letterSpacing: '-0.5px'
+          letterSpacing: '-0.5px',
+          wordBreak: 'break-word'
         }
       }, props.title),
       props.subtitle ? h('div', {
@@ -1382,7 +1398,7 @@ function InventoryPage() {
       subtitle: 'Track stock levels, prices, and purchase records',
       action: h(Btn, { onClick: function() { setShowAdd(true); }, variant: 'success' }, '+ Add Stock')
     }),
-    h('div', { style: statStyle },
+    h('div', { className: 'wm-grid-4', style: statStyle },
       h(StatCard, { label: 'Total Items', value: inventory.length, color: C.earth, icon: 'N' }),
       h(StatCard, { label: 'Stock Value', value: fmtKES(stockValue), color: C.grass, icon: '$' }),
       h(StatCard, { label: 'Low Stock', value: inventory.filter(function(i) { return i.qty <= (i.reorderLevel || 0); }).length, sub: 'items', color: C.danger, icon: '!' }),
@@ -5729,21 +5745,34 @@ function DirectSalePage() {
     // Customer block
     h(Card, { style: { marginBottom: 14 } },
       h(CardTitle, null, '\u{1F464} Customer'),
-      h('div', { style: { padding: '0 18px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-        h(Sel, {
-          label: 'Existing Customer',
-          value: custId,
-          onChange: function(v) { setCustId(v); if (v) setWalkInName(''); },
-          options: [{ value: '', label: '— Walk-in / Not a regular —' }].concat(
-            customers.map(function(c) { return { value: c.id, label: c.name }; })
-          )
-        }),
-        h(Inp, {
-          label: 'Walk-in Name (optional)',
-          value: walkInName,
-          onChange: function(v) { setWalkInName(v); if (v) setCustId(''); },
-          placeholder: 'For receipts only'
-        })
+      h('div', {
+        className: 'wm-grid-2 wm-customer-grid',
+        style: {
+          padding: '14px 18px',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 14,
+          alignItems: 'start'  // labels align to top so fields line up regardless of label wrapping
+        }
+      },
+        h('div', null,
+          h(Sel, {
+            label: 'Existing Customer',
+            value: custId,
+            onChange: function(v) { setCustId(v); if (v) setWalkInName(''); },
+            options: [{ value: '', label: '— Walk-in / Not a regular —' }].concat(
+              customers.map(function(c) { return { value: c.id, label: c.name }; })
+            )
+          })
+        ),
+        h('div', null,
+          h(Inp, {
+            label: 'Walk-in Name (optional)',
+            value: walkInName,
+            onChange: function(v) { setWalkInName(v); if (v) setCustId(''); },
+            placeholder: 'For receipts only'
+          })
+        )
       )
     ),
     // Line items block
@@ -6871,8 +6900,8 @@ export default function Pages(props) {
       onClose: function() { props.setSidebarOpen(false); }
     }),
     h('div', {
-      className: 'wm-main wm-page',
-      style: { flex: 1, overflow: 'auto', padding: '20px 24px', minWidth: 0 }
+      className: 'wm-main',
+      style: { flex: 1, overflow: 'auto', minWidth: 0 }
     }, pageFn())
   );
 }
