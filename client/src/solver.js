@@ -4,9 +4,14 @@
 // Always returns a solution. If no mix can meet nutrition, returns the closest
 // possible mix plus a "what to buy" suggestion.
 
-// LINEAR PROGRAMMING (Big-M Simplex)
-function lpSolve({c, A_ub, b_ub, A_eq, b_eq, lb, ub, maxIter = 8000}) {
-  const n = c.length, BigM = 1e8, EPS = 1e-9;
+// LINEAR PROGRAMMING (Two-Phase Simplex)
+// Phase 1 minimises sum of artificial variables to find a feasible basis,
+// then Phase 2 optimises the original cost. More numerically stable than Big-M
+// for problems with mixed scales (e.g. ME at thousands, Met at fractions),
+// where Big-M penalties degrade precision and can make the simplex declare
+// infeasibility when a feasible solution exists.
+function lpSolve({c, A_ub, b_ub, A_eq, b_eq, lb, ub, maxIter = 20000}) {
+  const n = c.length, EPS = 1e-9;
   const lbA = lb || Array(n).fill(0);
   const ubA = ub || Array(n).fill(100);
   const range = ubA.map((u, i) => Math.max(0, u - lbA[i]));
@@ -14,36 +19,51 @@ function lpSolve({c, A_ub, b_ub, A_eq, b_eq, lb, ub, maxIter = 8000}) {
   const rows_eq = A_eq ? A_eq.length : 0;
   const rows_box = n;
   const m = rows_ub + rows_eq + rows_box;
-  const nSlkUb = rows_ub, nSlkBox = n, nArt = rows_eq;
-  const nT = n + nSlkUb + nSlkBox + nArt;
+  const nSlkUb = rows_ub, nSlkBox = n;
+  // Allocate enough artificial columns for any constraint that may need one
+  const nArtMax = rows_eq + rows_ub;
+  const nT = n + nSlkUb + nSlkBox + nArtMax;
   const T = Array.from({length: m + 1}, () => new Float64Array(nT + 1));
-  for (let j = 0; j < n; j++) T[m][j] = c[j];
-  for (let j = 0; j < nArt; j++) T[m][n + nSlkUb + nSlkBox + j] = BigM;
   const basis = new Int32Array(m);
+  let artIdx = n + nSlkUb + nSlkBox;
+  const artCols = [];
+
+  // Upper-bound (≤) rows
   for (let i = 0; i < rows_ub; i++) {
     for (let j = 0; j < n; j++) T[i][j] = A_ub[i][j];
     let rhs = b_ub[i];
     for (let k = 0; k < n; k++) rhs -= A_ub[i][k] * lbA[k];
-    if (rhs < 0) {
+    if (rhs >= 0) {
+      // Standard non-negative slack
+      T[i][n + i] = 1;
+      T[i][nT] = rhs;
+      basis[i] = n + i;
+    } else {
+      // Negative RHS: flip sign so RHS ≥ 0, use surplus slack + artificial
       for (let j = 0; j < n; j++) T[i][j] = -T[i][j];
       rhs = -rhs;
       T[i][n + i] = -1;
-    } else {
-      T[i][n + i] = 1;
+      T[i][artIdx] = 1;
+      T[i][nT] = rhs;
+      basis[i] = artIdx;
+      artCols.push(artIdx);
+      artIdx++;
     }
-    T[i][nT] = rhs;
-    basis[i] = n + i;
   }
+  // Equality rows
   for (let i = 0; i < rows_eq; i++) {
     const r = rows_ub + i;
     for (let j = 0; j < n; j++) T[r][j] = A_eq[i][j];
     let rhs = b_eq[i];
     for (let k = 0; k < n; k++) rhs -= A_eq[i][k] * lbA[k];
-    T[r][n + nSlkUb + nSlkBox + i] = 1;
+    if (rhs < 0) { for (let j = 0; j < n; j++) T[r][j] = -T[r][j]; rhs = -rhs; }
+    T[r][artIdx] = 1;
     T[r][nT] = rhs;
-    basis[r] = n + nSlkUb + nSlkBox + i;
-    for (let j = 0; j <= nT; j++) T[m][j] -= BigM * T[r][j];
+    basis[r] = artIdx;
+    artCols.push(artIdx);
+    artIdx++;
   }
+  // Box constraints (always slacked)
   for (let i = 0; i < n; i++) {
     const r = rows_ub + rows_eq + i;
     T[r][i] = 1;
@@ -51,6 +71,7 @@ function lpSolve({c, A_ub, b_ub, A_eq, b_eq, lb, ub, maxIter = 8000}) {
     T[r][nT] = range[i];
     basis[r] = n + nSlkUb + i;
   }
+
   function pivot(row, col) {
     const pv = T[row][col];
     for (let j = 0; j <= nT; j++) T[row][j] /= pv;
@@ -62,13 +83,12 @@ function lpSolve({c, A_ub, b_ub, A_eq, b_eq, lb, ub, maxIter = 8000}) {
     }
     basis[row] = col;
   }
-  let iters = 0;
-  while (iters++ < maxIter) {
+  function step() {
     let col = -1, minC = -EPS;
     for (let j = 0; j < nT; j++) {
       if (T[m][j] < minC) { minC = T[m][j]; col = j; }
     }
-    if (col === -1) break;
+    if (col === -1) return 'optimal';
     let row = -1, minR = Infinity;
     for (let i = 0; i < m; i++) {
       if (T[i][col] > EPS) {
@@ -76,26 +96,71 @@ function lpSolve({c, A_ub, b_ub, A_eq, b_eq, lb, ub, maxIter = 8000}) {
         if (r < minR - EPS) { minR = r; row = i; }
       }
     }
-    if (row === -1) return { feasible: false, x: null, cost: Infinity, iters };
+    if (row === -1) return 'unbounded';
     pivot(row, col);
+    return 'pivoted';
   }
+
+  let totalIters = 0;
+  // PHASE 1 — only run if we have artificials. Minimise sum of artificials.
+  if (artCols.length > 0) {
+    for (let j = 0; j <= nT; j++) T[m][j] = 0;
+    for (const a of artCols) T[m][a] = 1;
+    // Reduce: for each artificial currently in basis, subtract that row from objective
+    const artSet = new Set(artCols);
+    for (let i = 0; i < m; i++) {
+      if (artSet.has(basis[i])) {
+        for (let j = 0; j <= nT; j++) T[m][j] -= T[i][j];
+      }
+    }
+    let phase1Iters = 0;
+    while (phase1Iters++ < maxIter) {
+      const s = step();
+      if (s !== 'pivoted') break;
+    }
+    totalIters += phase1Iters;
+    // Phase 1 must drive artificials to ~0; if not, problem is genuinely infeasible
+    let artSum = 0;
+    for (let i = 0; i < m; i++) {
+      if (artSet.has(basis[i])) artSum += T[i][nT];
+    }
+    if (artSum > 1e-6) {
+      return { feasible: false, x: null, cost: Infinity, iters: totalIters };
+    }
+  }
+
+  // PHASE 2 — optimise original cost. Keep artificials penalised to prevent re-entry.
+  for (let j = 0; j <= nT; j++) T[m][j] = 0;
+  for (let j = 0; j < n; j++) T[m][j] = c[j];
+  for (const a of artCols) T[m][a] = 1e15;
+  // Reduce based on current basis
+  for (let i = 0; i < m; i++) {
+    const b = basis[i];
+    const cb = T[m][b];
+    if (Math.abs(cb) > EPS) {
+      for (let j = 0; j <= nT; j++) T[m][j] -= cb * T[i][j];
+    }
+  }
+  let phase2Iters = 0;
+  while (phase2Iters++ < maxIter) {
+    const s = step();
+    if (s !== 'pivoted') break;
+  }
+  totalIters += phase2Iters;
+
+  // Extract solution
   const x = new Float64Array(n);
   for (let i = 0; i < m; i++) {
     const b = basis[i];
     if (b < n) x[b] = T[i][nT];
   }
-  let feasible = true;
-  outer: for (let j = n + nSlkUb + nSlkBox; j < nT; j++) {
-    for (let i = 0; i < m; i++) {
-      if (basis[i] === j && T[i][nT] > 1e-4) { feasible = false; break outer; }
-    }
-  }
   const xF = Array.from(x).map((xi, i) => xi + lbA[i]);
 
-  // POST-SOLVE VERIFICATION: check that all original constraints are satisfied
-  // This catches cases where Big-M numerical issues mask infeasibility
+  // POST-SOLVE VERIFICATION — sanity check that the answer satisfies constraints.
+  // This catches any lingering numerical issues; rarely fires in practice.
+  let feasible = true;
   const VERIFY_TOL = 1e-4;
-  if (feasible && A_ub) {
+  if (A_ub) {
     for (let i = 0; i < rows_ub; i++) {
       let lhs = 0;
       for (let j = 0; j < n; j++) lhs += A_ub[i][j] * xF[j];
@@ -110,7 +175,7 @@ function lpSolve({c, A_ub, b_ub, A_eq, b_eq, lb, ub, maxIter = 8000}) {
     }
   }
 
-  return { feasible, x: xF, cost: c.reduce((s, ci, i) => s + ci * xF[i], 0), iters };
+  return { feasible, x: xF, cost: c.reduce((s, ci, i) => s + ci * xF[i], 0), iters: totalIters };
 }
 
 const NUTRIENTS = ['cp', 'me', 'fat', 'fibre', 'ca', 'p', 'lys', 'met'];
@@ -879,7 +944,8 @@ function assessNutrientGaps(nutrients, reqs) {
   return warnings;
 }
 
-export {
+export { coordinateDescentSearch,
+  tryLPSolve,
   lpSolve,
   solveStrictLP,
   solveLeastCostLP,
