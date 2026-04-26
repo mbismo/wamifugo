@@ -893,28 +893,58 @@ function Sidebar(props) {
   });
 
   const sidebarStyle = {
-    width: 215, background: C.earth, minHeight: '100vh',
+    width: 215, background: C.earth,
+    // Use viewport height (not min-height) so the column never grows beyond
+    // the screen — important on phones where the user/logout footer would
+    // otherwise be pushed off the bottom and become unreachable.
+    height: '100vh',
+    maxHeight: '100vh',
     display: 'flex', flexDirection: 'column', flexShrink: 0,
-    position: 'relative', zIndex: 1000, transition: 'left 0.25s ease'
+    position: 'relative', zIndex: 1000, transition: 'left 0.25s ease',
+    overflow: 'hidden'  // contain children; nav handles its own scroll
   };
 
   return h('div', { className: 'wm-sidebar' + (props.isOpen ? ' open' : ''), style: sidebarStyle },
-    h('div', { style: { padding: '20px 15px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)' } },
+    h('div', { style: { padding: '20px 15px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 } },
       h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 } },
         h('span', { style: { fontSize: 24 } }, '\u{1F33E}'),
         h('div', { style: { fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 900, color: 'white', lineHeight: 1 } }, 'Wa-Mifugo')
       ),
       h('div', { style: { fontFamily: "'DM Mono',monospace", fontSize: 9, color: C.harvest, letterSpacing: 2.5, textTransform: 'uppercase', marginTop: 6 } }, 'Feeds Management')
     ),
-    h('nav', { style: { flex: 1, padding: '8px 7px' } }, buttons),
-    h('div', { style: { padding: '13px 15px', borderTop: '1px solid rgba(255,255,255,0.1)' } },
+    // Scrollable nav region — takes whatever vertical space is left between
+    // the header above and the user footer below. On short screens, scroll
+    // through items vertically; the footer with Sign out always stays visible.
+    h('nav', {
+      style: {
+        flex: 1, padding: '8px 7px',
+        overflowY: 'auto',
+        minHeight: 0  // critical for flex children to actually scroll
+      }
+    }, buttons),
+    h('div', { style: { padding: '13px 15px', borderTop: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 } },
       h('div', { style: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 3 } }, 'Signed in as'),
       h('div', { style: { fontSize: 13, color: 'white', fontWeight: 600 } }, props.user.name),
       h('div', { style: { fontSize: 10, color: C.harvest, textTransform: 'uppercase', letterSpacing: 1, fontFamily: "'DM Mono',monospace" } }, props.user.role),
+      // Sign out — sized for thumb-tapping on phone. Padding + min-height so
+      // it's a proper touch target instead of a tiny text link.
       h('button', {
         onClick: props.onLogout,
-        style: { marginTop: 9, fontSize: 12, color: 'rgba(255,255,255,0.45)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }
-      }, 'Sign out')
+        style: {
+          marginTop: 10,
+          fontSize: 12,
+          fontWeight: 600,
+          color: 'rgba(255,255,255,0.85)',
+          background: 'rgba(255,255,255,0.08)',
+          border: '1px solid rgba(255,255,255,0.15)',
+          borderRadius: 6,
+          cursor: 'pointer',
+          padding: '8px 14px',
+          width: '100%',
+          textAlign: 'center',
+          letterSpacing: 0.3
+        }
+      }, '\u{2192} Sign out')
     )
   );
 }
