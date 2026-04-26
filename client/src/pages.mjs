@@ -2451,6 +2451,12 @@ function FormulatorPage(props) {
       srcFormula: srcFormula,
       missingBuyPriceCount: missingCount
     });
+    // Pre-fill the agreed price input with the solver's recommended sell price
+    // (per-kg cost from the cost-optimised mix at ingredient sell prices).
+    // The user can still edit this before confirming the sale — for negotiation,
+    // rounding, volume discount, or extra formulation markup.
+    const recommendedPerKg = batchKg > 0 ? totalSellValue / batchKg : 0;
+    setSelPrice(recommendedPerKg > 0 ? recommendedPerKg.toFixed(2) : '');
     setShowSell(true);
   }
 
@@ -2827,12 +2833,38 @@ function FormulatorPage(props) {
       })
     ),
     h(Inp, {
-      label: 'Agreed Sell Price (KES/kg) - enter based on customer negotiation',
+      label: 'Agreed Sell Price (KES/kg) — pre-filled from formula; edit if needed',
       value: selPrice,
       onChange: setSelPrice,
       type: 'number',
       placeholder: 'e.g. 65'
     }),
+    // Quick-action buttons to nudge the price up or down for common scenarios
+    h('div', {
+      style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: -6, marginBottom: 10 }
+    },
+      [
+        { label: 'Reset to recommended', factor: null, ref: pendingSale.totalSellValue / batchKg },
+        { label: '−5% (discount)', factor: 0.95 },
+        { label: '+5% (markup)', factor: 1.05 },
+        { label: '+10%', factor: 1.10 },
+      ].map(function(opt, idx) {
+        return h('button', {
+          key: idx,
+          type: 'button',
+          onClick: function() {
+            const base = pendingSale.totalSellValue / batchKg;
+            const v = opt.factor == null ? base : base * opt.factor;
+            setSelPrice(v.toFixed(2));
+          },
+          style: {
+            padding: '4px 9px', fontSize: 11, fontWeight: 600,
+            background: 'white', color: C.earth,
+            border: '1px solid ' + C.border, borderRadius: 6, cursor: 'pointer'
+          }
+        }, opt.label);
+      })
+    ),
     selPrice ? (function() {
       const totalRevenue = parseFloat(selPrice) * batchKg;
       const totalBuyCost = pendingSale.totalBuyCost;
